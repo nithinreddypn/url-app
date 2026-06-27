@@ -49,24 +49,6 @@ class _BlockedUrlsScreenState extends ConsumerState<BlockedUrlsScreen> {
     super.dispose();
   }
 
-  void _showSnackBar(String message, {bool isError = false}) {
-    if (!mounted) return;
-    if (isError) {
-      AlertService.showAlert(
-        context,
-        type: AlertType.error,
-        title: 'Action Failed',
-        description: message,
-      );
-    } else {
-      AlertService.showAlert(
-        context,
-        type: AlertType.success,
-        title: 'Success',
-        description: message,
-      );
-    }
-  }
 
   String _formatDate(DateTime? date) {
     if (date == null) return 'Unknown';

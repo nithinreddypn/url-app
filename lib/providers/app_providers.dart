@@ -32,15 +32,14 @@ final scanLimitServiceProvider = Provider((ref) {
 /// Exposes the current authenticated user's model and profiles metadata.
 final userProvider = StateNotifierProvider<UserNotifier, UserModel?>((ref) {
   final userService = ref.watch(userServiceProvider);
-  return UserNotifier(userService, ref);
+  return UserNotifier(userService);
 });
 
 class UserNotifier extends StateNotifier<UserModel?> {
   final UserService _userService;
-  final Ref _ref;
   StreamSubscription<AuthState>? _authSubscription;
 
-  UserNotifier(this._userService, this._ref) : super(null) {
+  UserNotifier(this._userService) : super(null) {
     _init();
   }
 

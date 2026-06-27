@@ -1,3 +1,5 @@
+// ignore_for_file: use_build_context_synchronously
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -78,24 +80,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     return 'U';
   }
 
-  void _showSnackBar(String message, {bool isError = false}) {
-    if (!mounted) return;
-    if (isError) {
-      AlertService.showAlert(
-        context,
-        type: AlertType.error,
-        title: 'Action Failed',
-        description: message,
-      );
-    } else {
-      AlertService.showAlert(
-        context,
-        type: AlertType.success,
-        title: 'Success',
-        description: message,
-      );
-    }
-  }
 
   String _formatDate(DateTime? date) {
     if (date == null) return 'Unknown';
@@ -179,14 +163,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 );
                 // Refresh user state immediately
                 await ref.read(userProvider.notifier).refreshUser();
-                if (!mounted) return;
+                if (!context.mounted) return;
                 AlertService.showSuccess(
                   context,
                   'Profile Updated',
                   'Profile updated successfully.',
                 );
               } catch (e) {
-                if (!mounted) return;
+                if (!context.mounted) return;
                 AlertService.showError(context, e);
               }
             },
@@ -302,14 +286,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     await _authService.updatePassword(
                       newPassController.text.trim(),
                     );
-                    if (!mounted) return;
+                    if (!context.mounted) return;
                     AlertService.showSuccess(
                       context,
                       'Password Changed',
                       'Password changed successfully.',
                     );
                   } catch (e) {
-                    if (!mounted) return;
+                    if (!context.mounted) return;
                     AlertService.showError(context, e);
                   }
                 },
@@ -378,7 +362,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       final currentUser = ref.read(userProvider);
       if (currentUser == null) return;
       await _blockedUrlService.unblockUrl(blockedUrl.id, userId: currentUser.userId);
-      if (!mounted) return;
+      if (!context.mounted) return;
       AlertService.showSuccess(
         context,
         'URL Unblocked',
@@ -387,7 +371,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ref.invalidate(blockedUrlsProvider);
       await ref.read(userProvider.notifier).refreshUser();
     } catch (e) {
-      if (!mounted) return;
+      if (!context.mounted) return;
       AlertService.showError(context, e);
     }
   }
@@ -448,11 +432,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ref.invalidate(scanLimitProvider);
         ref.invalidate(subscriptionProvider);
         await _authService.signOut();
-        if (mounted) {
+        if (context.mounted) {
           context.go('/auth_gate');
         }
       } catch (e) {
-        if (!mounted) return;
+        if (!context.mounted) return;
         AlertService.showError(context, e);
       }
     }

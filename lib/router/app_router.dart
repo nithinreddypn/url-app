@@ -2,8 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../providers/app_providers.dart';
 import '../views/auth/auth_gate.dart';
 import '../views/auth/login_screen.dart';
 import '../views/auth/signup_screen.dart';
@@ -11,9 +9,7 @@ import '../views/main_screen.dart';
 import '../views/premium_screen.dart';
 import '../views/scan_history_screen.dart';
 import '../views/blocked_urls_screen.dart';
-
 import '../views/auth/reset_password_screen.dart';
-import '../views/auth/email_confirmation_screen.dart';
 
 bool isPasswordRecoveryMode = false;
 

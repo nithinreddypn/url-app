@@ -8,7 +8,6 @@ import '../services/blocked_url_service.dart';
 import '../models/url_scan_model.dart';
 import '../models/blocked_url_model.dart';
 import '../services/exception_mapper.dart';
-import '../services/alert_service.dart';
 
 
 class AlertsScreen extends StatefulWidget {

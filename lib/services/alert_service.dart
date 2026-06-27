@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../theme/app_theme.dart';
 import 'exception_mapper.dart';
 
 enum AlertType { success, error, warning, info }
