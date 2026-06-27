@@ -36,7 +36,7 @@ class UserService {
     required String email,
     String role = 'user',
   }) async {
-    final response = await _client.from(_table).insert({
+    final response = await _client.from(_table).upsert({
       'user_id': userId,
       'username': username,
       'email': email,
@@ -79,17 +79,5 @@ class UserService {
 
     final updatedList = user.blockedList.where((u) => u != url).toList();
     return await updateBlockedList(userId, updatedList);
-  }
-
-  /// Fetch all users (admin use).
-  Future<List<UserModel>> getAllUsers() async {
-    final response = await _client
-        .from(_table)
-        .select()
-        .order('created_at', ascending: false);
-
-    return (response as List)
-        .map((json) => UserModel.fromJson(json))
-        .toList();
   }
 }

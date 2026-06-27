@@ -6,6 +6,7 @@ import '../models/blocked_url_model.dart';
 import '../services/blocked_url_service.dart';
 import '../providers/app_providers.dart';
 import '../theme/app_theme.dart';
+import '../services/alert_service.dart';
 
 class BlockedUrlsScreen extends ConsumerStatefulWidget {
   const BlockedUrlsScreen({super.key});
@@ -50,15 +51,21 @@ class _BlockedUrlsScreenState extends ConsumerState<BlockedUrlsScreen> {
 
   void _showSnackBar(String message, {bool isError = false}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? _red : _primaryGreen,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.all(16),
-      ),
-    );
+    if (isError) {
+      AlertService.showAlert(
+        context,
+        type: AlertType.error,
+        title: 'Action Failed',
+        description: message,
+      );
+    } else {
+      AlertService.showAlert(
+        context,
+        type: AlertType.success,
+        title: 'Success',
+        description: message,
+      );
+    }
   }
 
   String _formatDate(DateTime? date) {
@@ -74,13 +81,21 @@ class _BlockedUrlsScreenState extends ConsumerState<BlockedUrlsScreen> {
 
   Future<void> _unblockUrl(BlockedUrlModel blockedUrl) async {
     try {
+      final currentUser = ref.read(userProvider);
+      if (currentUser == null) return;
       HapticFeedback.mediumImpact();
-      await _blockedUrlService.unblockUrl(blockedUrl.id);
-      _showSnackBar('URL unblocked');
+      await _blockedUrlService.unblockUrl(blockedUrl.id, userId: currentUser.userId);
+      if (!mounted) return;
+      AlertService.showSuccess(
+        context,
+        'URL Unblocked',
+        'URL unblocked successfully.',
+      );
       ref.invalidate(blockedUrlsProvider);
       await ref.read(userProvider.notifier).refreshUser();
     } catch (e) {
-      _showSnackBar('Failed to unblock: $e', isError: true);
+      if (!mounted) return;
+      AlertService.showError(context, e);
     }
   }
 
@@ -378,7 +393,12 @@ class _BlockedUrlsScreenState extends ConsumerState<BlockedUrlsScreen> {
                   onPressed: () async {
                     HapticFeedback.lightImpact();
                     await Clipboard.setData(ClipboardData(text: url.url));
-                    _showSnackBar('URL copied to clipboard');
+                    if (!mounted) return;
+                    AlertService.showInfo(
+                      context,
+                      'Copied to Clipboard',
+                      'URL copied to clipboard.',
+                    );
                   },
                   icon: Icon(
                     Icons.content_copy_rounded,

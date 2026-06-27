@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -31,13 +32,15 @@ final scanLimitServiceProvider = Provider((ref) {
 /// Exposes the current authenticated user's model and profiles metadata.
 final userProvider = StateNotifierProvider<UserNotifier, UserModel?>((ref) {
   final userService = ref.watch(userServiceProvider);
-  return UserNotifier(userService);
+  return UserNotifier(userService, ref);
 });
 
 class UserNotifier extends StateNotifier<UserModel?> {
   final UserService _userService;
+  final Ref _ref;
+  StreamSubscription<AuthState>? _authSubscription;
 
-  UserNotifier(this._userService) : super(null) {
+  UserNotifier(this._userService, this._ref) : super(null) {
     _init();
   }
 
@@ -49,15 +52,25 @@ class UserNotifier extends StateNotifier<UserModel?> {
     }
 
     // Listen to changes in auth state
-    SupabaseConfig.client.auth.onAuthStateChange.listen((data) async {
+    _authSubscription = SupabaseConfig.client.auth.onAuthStateChange.listen((data) async {
       final user = data.session?.user ?? SupabaseConfig.client.auth.currentUser;
       if (user != null) {
         final profile = await _getOrCreateProfile(user);
-        state = profile;
+        if (mounted) {
+          state = profile;
+        }
       } else {
-        state = null;
+        if (mounted) {
+          state = null;
+        }
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    super.dispose();
   }
 
   Future<UserModel> _getOrCreateProfile(User user) async {
@@ -98,10 +111,12 @@ class UserNotifier extends StateNotifier<UserModel?> {
 
   Future<void> refreshUser() async {
     final user = SupabaseConfig.client.auth.currentUser;
-    if (user != null) {
+    if (user != null && user.emailConfirmedAt != null) {
       try {
         final profile = await _getOrCreateProfile(user);
-        state = profile;
+        if (mounted) {
+          state = profile;
+        }
       } catch (_) {}
     }
   }
@@ -153,28 +168,7 @@ final blockedUrlsProvider = FutureProvider<List<BlockedUrlModel>>((ref) async {
   final user = ref.watch(userProvider);
   if (user == null) return [];
   final blockedService = BlockedUrlService();
-  final list = await blockedService.getAllBlockedUrls();
-  if (list.isEmpty) {
-    try {
-      await blockedService.blockUrl(
-        userId: user.userId,
-        url: 'phishing-example.com',
-        reason: 'Phishing Attempt',
-      );
-      await blockedService.blockUrl(
-        userId: user.userId,
-        url: 'malware-example.net',
-        reason: 'Malicious Software Download',
-      );
-      await blockedService.blockUrl(
-        userId: user.userId,
-        url: 'fake-bank-login.com',
-        reason: 'Credential Harvesting',
-      );
-      return await blockedService.getAllBlockedUrls();
-    } catch (_) {}
-  }
-  return list;
+  return await blockedService.getBlockedUrls(user.userId);
 });
 
 // Payment State StateNotifier
@@ -269,3 +263,77 @@ class ThemeModeNotifier extends StateNotifier<ThemeMode> {
     state = mode;
   }
 }
+
+// --- Resend Verification Email Cooldown Provider ---
+
+class CooldownTimerNotifier extends StateNotifier<int> {
+  Timer? _timer;
+
+  CooldownTimerNotifier() : super(0);
+
+  void start() {
+    _timer?.cancel();
+    state = 60;
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (state > 0) {
+        state = state - 1;
+      } else {
+        _timer?.cancel();
+      }
+    });
+  }
+
+  void reset() {
+    _timer?.cancel();
+    state = 0;
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+}
+
+final cooldownTimerProvider = StateNotifierProvider.autoDispose<CooldownTimerNotifier, int>((ref) {
+  return CooldownTimerNotifier();
+});
+
+// --- Pending Signup State Providers (Kept for compilation and future production use) ---
+
+class PendingSignupState {
+  final bool isPending;
+  final String? email;
+  final String? username;
+
+  PendingSignupState({
+    required this.isPending,
+    this.email,
+    this.username,
+  });
+
+  factory PendingSignupState.idle() => PendingSignupState(isPending: false);
+  factory PendingSignupState.pending(String email, String? username) =>
+      PendingSignupState(isPending: true, email: email, username: username);
+}
+
+class PendingSignupNotifier extends StateNotifier<PendingSignupState> {
+  PendingSignupNotifier() : super(PendingSignupState.idle());
+
+  void setPending({required String email, String? username}) {
+    state = PendingSignupState.pending(email, username);
+  }
+
+  void clear() {
+    state = PendingSignupState.idle();
+  }
+}
+
+final pendingSignupProvider = StateNotifierProvider<PendingSignupNotifier, PendingSignupState>((ref) {
+  return PendingSignupNotifier();
+});
+
+final isEmailVerifiedProvider = Provider<bool>((ref) {
+  final user = ref.watch(userProvider);
+  return user != null;
+});

@@ -26,16 +26,12 @@ class AuthGate extends StatelessWidget {
                     height: 80,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [context.activeAccent, Color(0xFF3ED65C)],
-                      ),
+                      color: Colors.white,
                       boxShadow: [
                         BoxShadow(
-                          color: context.activeAccent.withValues(alpha: 0.35),
-                          blurRadius: 24,
-                          spreadRadius: 4,
+                          color: Colors.black.withValues(alpha: 0.10),
+                          blurRadius: 20,
+                          spreadRadius: 2,
                         ),
                       ],
                     ),
@@ -76,7 +72,7 @@ class AuthGate extends StatelessWidget {
         final authState = snapshot.data;
         final session = authState?.session;
 
-        if (session != null) {
+        if (session != null && session.user.emailConfirmedAt != null) {
           return const MainScreen();
         }
 

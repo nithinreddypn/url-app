@@ -7,6 +7,8 @@ import '../services/supabase_config.dart';
 import '../services/blocked_url_service.dart';
 import '../models/url_scan_model.dart';
 import '../models/blocked_url_model.dart';
+import '../services/exception_mapper.dart';
+import '../services/alert_service.dart';
 
 
 class AlertsScreen extends StatefulWidget {
@@ -91,83 +93,12 @@ class _AlertsScreenState extends State<AlertsScreen> {
             onTimeout: () => <UrlScanModel>[],
           );
 
-      if (dangerousScans.isEmpty) {
-        try {
-          await _scanService.scanUrl(
-            userId: userId,
-            scannedUrl: 'phishing-site.com',
-            scanResult: 'dangerous',
-            threatType: 'phishing',
-            riskScore: 85,
-            virusTotalFlags: 12,
-            heuristicHits: 4,
-            communityReports: 25,
-          );
-          await _scanService.scanUrl(
-            userId: userId,
-            scannedUrl: 'malware-download.net',
-            scanResult: 'dangerous',
-            threatType: 'malware',
-            riskScore: 95,
-            virusTotalFlags: 18,
-            heuristicHits: 6,
-            communityReports: 30,
-          );
-          await _scanService.scanUrl(
-            userId: userId,
-            scannedUrl: 'fake-paypal-login.com',
-            scanResult: 'dangerous',
-            threatType: 'phishing',
-            riskScore: 90,
-            virusTotalFlags: 14,
-            heuristicHits: 5,
-            communityReports: 20,
-          );
-          if (isPremiumStatus) {
-            await _scanService.scanUrl(
-              userId: userId,
-              scannedUrl: 'fake-amazon-login.com',
-              scanResult: 'dangerous',
-              threatType: 'phishing',
-              riskScore: 88,
-              virusTotalFlags: 10,
-              heuristicHits: 3,
-              communityReports: 15,
-            );
-            await _scanService.scanUrl(
-              userId: userId,
-              scannedUrl: 'crypto-scam.io',
-              scanResult: 'dangerous',
-              threatType: 'scam',
-              riskScore: 78,
-              virusTotalFlags: 8,
-              heuristicHits: 2,
-              communityReports: 45,
-            );
-            await _scanService.scanUrl(
-              userId: userId,
-              scannedUrl: 'malware-site.net',
-              scanResult: 'dangerous',
-              threatType: 'malware',
-              riskScore: 92,
-              virusTotalFlags: 16,
-              heuristicHits: 5,
-              communityReports: 12,
-            );
-          }
-          dangerousScans = await _scanService
-              .getScansByResult('dangerous', userId: userId)
-              .timeout(
-                const Duration(seconds: 10),
-                onTimeout: () => <UrlScanModel>[],
-              );
-        } catch (_) {}
-      }
+
 
       // 2. Fetch blocked URLs for Premium users ONLY
       List<UrlScanModel> globalBlocked = [];
       if (isPremiumStatus) {
-        final blockedUrls = await BlockedUrlService().getAllBlockedUrls().timeout(
+        final blockedUrls = await BlockedUrlService().getBlockedUrls(userId).timeout(
               const Duration(seconds: 10),
               onTimeout: () => <BlockedUrlModel>[],
             );
@@ -194,13 +125,14 @@ class _AlertsScreenState extends State<AlertsScreen> {
         });
       }
     } catch (e) {
+      final mapped = ExceptionMapper.map(e);
       if (mounted) {
         setState(() {
           _isLoading = false;
           _myDangerousScans = [];
           _globalBlockedUrls = [];
           _isPremium = false;
-          _errorMessage = e.toString().replaceFirst('Exception: ', '');
+          _errorMessage = mapped.description;
         });
       }
     }
@@ -314,13 +246,33 @@ class _AlertsScreenState extends State<AlertsScreen> {
       );
     } catch (e, stack) {
       debugPrint('AlertsScreen build error: $e\n$stack');
-      return Scaffold(
+      return const Scaffold(
         body: Center(
           child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: SelectableText(
-              'AlertsScreen Crash: $e\n\nStack:\n$stack',
-              style: const TextStyle(color: Colors.red, fontSize: 12),
+            padding: EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.error_outline_rounded, color: Color(0xFFEF4444), size: 48),
+                SizedBox(height: 16),
+                Text(
+                  'Screen Load Error',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  "We're having trouble displaying this screen. Please try again in a few moments.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
             ),
           ),
         ),

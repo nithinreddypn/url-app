@@ -9,7 +9,7 @@ class UrlScanService {
 
   /// Insert a new URL scan result.
   Future<UrlScanModel> scanUrl({
-    String? userId,
+    required String userId,
     required String scannedUrl,
     String? scanResult,
     String? threatType,
@@ -35,7 +35,7 @@ class UrlScanService {
   /// Real scan utilizing VirusTotal API
   Future<UrlScanModel> scanUrlWithVirusTotal({
     required String scannedUrl,
-    String? userId,
+    required String userId,
   }) async {
     const apiKey = '891f8c291f35f7abfea23148f99e7cfdf06ce1073637ee129dc0b0eef7b2232a';
 
@@ -283,11 +283,12 @@ class UrlScanService {
   }
 
   /// Get a specific scan by its ID.
-  Future<UrlScanModel?> getScanById(String scanId) async {
+  Future<UrlScanModel?> getScanById(String scanId, {required String userId}) async {
     final response = await _client
         .from(_table)
         .select()
         .eq('scan_id', scanId)
+        .eq('user_id', userId)
         .maybeSingle();
 
     if (response == null) return null;
@@ -295,12 +296,11 @@ class UrlScanService {
   }
 
   /// Get the most recent scans, optionally limited.
-  Future<List<UrlScanModel>> getRecentScans({String? userId, int limit = 20}) async {
-    var query = _client.from(_table).select();
-    if (userId != null) {
-      query = query.eq('user_id', userId);
-    }
-    final response = await query
+  Future<List<UrlScanModel>> getRecentScans({required String userId, int limit = 20}) async {
+    final response = await _client
+        .from(_table)
+        .select()
+        .eq('user_id', userId)
         .order('scanned_at', ascending: false)
         .limit(limit);
 
@@ -310,12 +310,13 @@ class UrlScanService {
   }
 
   /// Get scans filtered by result (e.g., 'safe', 'dangerous').
-  Future<List<UrlScanModel>> getScansByResult(String result, {String? userId}) async {
-    var query = _client.from(_table).select().eq('scan_result', result);
-    if (userId != null) {
-      query = query.eq('user_id', userId);
-    }
-    final response = await query.order('scanned_at', ascending: false);
+  Future<List<UrlScanModel>> getScansByResult(String result, {required String userId}) async {
+    final response = await _client
+        .from(_table)
+        .select()
+        .eq('scan_result', result)
+        .eq('user_id', userId)
+        .order('scanned_at', ascending: false);
 
     return (response as List)
         .map((json) => UrlScanModel.fromJson(json))
@@ -323,8 +324,12 @@ class UrlScanService {
   }
 
   /// Delete a scan by its ID.
-  Future<void> deleteScan(String scanId) async {
-    await _client.from(_table).delete().eq('scan_id', scanId);
+  Future<void> deleteScan(String scanId, {required String userId}) async {
+    await _client
+        .from(_table)
+        .delete()
+        .eq('scan_id', scanId)
+        .eq('user_id', userId);
   }
 
   /// Get the total scan count for a user.
@@ -338,10 +343,11 @@ class UrlScanService {
   }
 
   /// Listen to real-time scan inserts.
-  Stream<List<Map<String, dynamic>>> onNewScans() {
+  Stream<List<Map<String, dynamic>>> onNewScans({required String userId}) {
     return _client
         .from(_table)
         .stream(primaryKey: ['scan_id'])
+        .eq('user_id', userId)
         .order('scanned_at', ascending: false)
         .limit(50);
   }

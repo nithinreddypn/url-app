@@ -21,8 +21,8 @@ class BlockedUrlService {
   }
 
   /// Unblock a URL (delete the blocked entry).
-  Future<void> unblockUrl(String id) async {
-    await _client.from(_table).delete().eq('id', id);
+  Future<void> unblockUrl(String id, {required String userId}) async {
+    await _client.from(_table).delete().eq('id', id).eq('user_id', userId);
   }
 
   /// Unblock a URL by user ID and URL string.
@@ -43,18 +43,6 @@ class BlockedUrlService {
         .from(_table)
         .select()
         .eq('user_id', userId)
-        .order('blocked_at', ascending: false);
-
-    return (response as List)
-        .map((json) => BlockedUrlModel.fromJson(json))
-        .toList();
-  }
-
-  /// Get all blocked URLs for the entire community.
-  Future<List<BlockedUrlModel>> getAllBlockedUrls() async {
-    final response = await _client
-        .from(_table)
-        .select()
         .order('blocked_at', ascending: false);
 
     return (response as List)

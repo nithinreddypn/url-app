@@ -8,6 +8,7 @@ import '../providers/app_providers.dart';
 import '../theme/app_theme.dart';
 import '../services/payment_service.dart';
 import '../services/razorpay_web_payment.dart';
+import '../services/alert_service.dart';
 
 class PremiumScreen extends ConsumerStatefulWidget {
   const PremiumScreen({super.key});
@@ -65,9 +66,19 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
 
     if (success) {
       if (!mounted) return;
+      AlertService.showSuccess(
+        context,
+        'Subscription Activated',
+        'Subscription activated successfully.',
+      );
       _showSuccessDialog();
     } else {
       if (!mounted) return;
+      AlertService.showError(
+        context,
+        'Verification failed. Please contact support if amount was debited.',
+        customTitle: 'Subscription Verification Failed',
+      );
       _showErrorDialog('Verification failed. Please contact support if amount was debited.');
     }
   }
@@ -251,12 +262,22 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
   }
 
   void _showSnackBar(String message, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? _red : _primaryGreen,
-      ),
-    );
+    if (!mounted) return;
+    if (isError) {
+      AlertService.showAlert(
+        context,
+        type: AlertType.error,
+        title: 'Action Failed',
+        description: message,
+      );
+    } else {
+      AlertService.showAlert(
+        context,
+        type: AlertType.success,
+        title: 'Success',
+        description: message,
+      );
+    }
   }
 
   // ──────────────────────────── Render UI ────────────────────────────

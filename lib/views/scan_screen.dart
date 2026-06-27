@@ -9,6 +9,7 @@ import '../models/url_scan_model.dart';
 import '../providers/app_providers.dart';
 import '../theme/app_theme.dart';
 import 'widgets/scan_limit_dialog.dart';
+import '../services/alert_service.dart';
 
 class ScanScreen extends ConsumerStatefulWidget {
   final String? initialUrl;
@@ -179,9 +180,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
           builder: (context) => ScanLimitDialog(),
         );
       } else {
-        _showSnackBar(
-            'Scan failed: ${errMsg.replaceFirst('Exception: ', '')}',
-            isError: true);
+        AlertService.showError(context, e);
       }
     }
   }
@@ -190,7 +189,11 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
     if (_scanResult == null) return;
     final userId = SupabaseConfig.client.auth.currentUser?.id;
     if (userId == null) {
-      _showSnackBar('You must be logged in to block URLs', isError: true);
+      AlertService.showWarning(
+        context,
+        'Authentication Required',
+        'You must be logged in to block URLs.',
+      );
       return;
     }
 
@@ -207,11 +210,15 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
         _isBlocking = false;
         _isBlocked = true;
       });
-      _showSnackBar('URL has been blocked successfully');
+      AlertService.showSuccess(
+        context,
+        'URL Blocked',
+        'URL blocked successfully.',
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() => _isBlocking = false);
-      _showSnackBar('Failed to block URL', isError: true);
+      AlertService.showError(context, e);
     }
   }
 
@@ -283,23 +290,36 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       } else {
-        _showSnackBar('Could not open the link.', isError: true);
+        if (!mounted) return;
+        AlertService.showError(
+          context,
+          'Could not open the link.',
+          customTitle: 'Link Error',
+        );
       }
     } catch (e) {
-      _showSnackBar('Error opening link: $e', isError: true);
+      if (!mounted) return;
+      AlertService.showError(context, e);
     }
   }
 
   void _showSnackBar(String message, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? _red : _primaryGreen,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        margin: EdgeInsets.all(16),
-      ),
-    );
+    if (!mounted) return;
+    if (isError) {
+      AlertService.showAlert(
+        context,
+        type: AlertType.error,
+        title: 'Action Failed',
+        description: message,
+      );
+    } else {
+      AlertService.showAlert(
+        context,
+        type: AlertType.success,
+        title: 'Success',
+        description: message,
+      );
+    }
   }
 
   @override

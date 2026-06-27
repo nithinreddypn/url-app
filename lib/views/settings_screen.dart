@@ -5,6 +5,8 @@ import '../services/auth_service.dart';
 import '../services/user_service.dart';
 import '../services/blocked_url_service.dart';
 import '../services/supabase_config.dart';
+import '../services/password_validator.dart';
+import '../services/alert_service.dart';
 import '../models/blocked_url_model.dart';
 import '../models/user_model.dart';
 import '../providers/app_providers.dart';
@@ -78,15 +80,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   void _showSnackBar(String message, {bool isError = false}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? _red : _primaryGreen,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: EdgeInsets.all(16),
-      ),
-    );
+    if (isError) {
+      AlertService.showAlert(
+        context,
+        type: AlertType.error,
+        title: 'Action Failed',
+        description: message,
+      );
+    } else {
+      AlertService.showAlert(
+        context,
+        type: AlertType.success,
+        title: 'Success',
+        description: message,
+      );
+    }
   }
 
   String _formatDate(DateTime? date) {
@@ -171,9 +179,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 );
                 // Refresh user state immediately
                 await ref.read(userProvider.notifier).refreshUser();
-                _showSnackBar('Profile updated!');
+                if (!mounted) return;
+                AlertService.showSuccess(
+                  context,
+                  'Profile Updated',
+                  'Profile updated successfully.',
+                );
               } catch (e) {
-                _showSnackBar('Failed to update: $e', isError: true);
+                if (!mounted) return;
+                AlertService.showError(context, e);
               }
             },
             style: ElevatedButton.styleFrom(
@@ -266,17 +280,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               ElevatedButton(
                 onPressed: () async {
-                  if (newPassController.text.trim().length < 6) {
-                    _showSnackBar(
-                      'Password must be at least 6 characters',
-                      isError: true,
+                  final validationError = PasswordValidator.getErrorMessage(newPassController.text);
+                  if (validationError != null) {
+                    AlertService.showWarning(
+                      context,
+                      'Weak Password',
+                      validationError,
                     );
                     return;
                   }
-                  if (newPassController.text != confirmPassController.text) {
-                    _showSnackBar(
-                      'Passwords do not match',
-                      isError: true,
+                  if (newPassController.text.trim() != confirmPassController.text.trim()) {
+                    AlertService.showWarning(
+                      context,
+                      'Weak Password',
+                      'Passwords do not match.',
                     );
                     return;
                   }
@@ -285,12 +302,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     await _authService.updatePassword(
                       newPassController.text.trim(),
                     );
-                    _showSnackBar('Password changed successfully!');
-                  } catch (e) {
-                    _showSnackBar(
-                      'Failed to change password: $e',
-                      isError: true,
+                    if (!mounted) return;
+                    AlertService.showSuccess(
+                      context,
+                      'Password Changed',
+                      'Password changed successfully.',
                     );
+                  } catch (e) {
+                    if (!mounted) return;
+                    AlertService.showError(context, e);
                   }
                 },
                 style: ElevatedButton.styleFrom(
@@ -355,12 +375,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _unblockUrl(BlockedUrlModel blockedUrl) async {
     try {
-      await _blockedUrlService.unblockUrl(blockedUrl.id);
-      _showSnackBar('URL unblocked');
+      final currentUser = ref.read(userProvider);
+      if (currentUser == null) return;
+      await _blockedUrlService.unblockUrl(blockedUrl.id, userId: currentUser.userId);
+      if (!mounted) return;
+      AlertService.showSuccess(
+        context,
+        'URL Unblocked',
+        'URL unblocked successfully.',
+      );
       ref.invalidate(blockedUrlsProvider);
       await ref.read(userProvider.notifier).refreshUser();
     } catch (e) {
-      _showSnackBar('Failed to unblock: $e', isError: true);
+      if (!mounted) return;
+      AlertService.showError(context, e);
     }
   }
 
@@ -414,12 +442,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     if (confirmed == true) {
       try {
+        ref.read(pendingSignupProvider.notifier).clear();
+        ref.invalidate(userProvider);
+        ref.invalidate(blockedUrlsProvider);
+        ref.invalidate(scanLimitProvider);
+        ref.invalidate(subscriptionProvider);
         await _authService.signOut();
         if (mounted) {
           context.go('/auth_gate');
         }
       } catch (e) {
-        _showSnackBar('Failed to sign out: $e', isError: true);
+        if (!mounted) return;
+        AlertService.showError(context, e);
       }
     }
   }
@@ -473,13 +507,33 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         );
     } catch (e, stack) {
       debugPrint('SettingsScreen build error: $e\n$stack');
-      return Scaffold(
+      return const Scaffold(
         body: Center(
           child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: SelectableText(
-              'SettingsScreen Crash: $e\n\nStack:\n$stack',
-              style: const TextStyle(color: Colors.red, fontSize: 12),
+            padding: EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.error_outline_rounded, color: Color(0xFFEF4444), size: 48),
+                SizedBox(height: 16),
+                Text(
+                  'Screen Load Error',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  "We're having trouble displaying this screen. Please try again in a few moments.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
             ),
           ),
         ),

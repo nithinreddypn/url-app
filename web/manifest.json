@@ -1,11 +1,11 @@
 {
-    "name": "url_defender",
-    "short_name": "url_defender",
+    "name": "URL Defender",
+    "short_name": "URL Defender",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#2E7D32",
-    "theme_color": "#2E7D32",
-    "description": "A new Flutter project.",
+    "background_color": "#FFFFFF",
+    "theme_color": "#1B4332",
+    "description": "Protect Yourself Online",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

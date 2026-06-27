@@ -1,17 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../providers/app_providers.dart';
 import '../../theme/app_theme.dart';
 import 'package:go_router/go_router.dart';
 import '../../services/auth_service.dart';
+import '../../services/alert_service.dart';
+import '../../services/exception_mapper.dart';
 
 
-class LoginScreen extends StatefulWidget {
+class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen>
+class _LoginScreenState extends ConsumerState<LoginScreen>
     with SingleTickerProviderStateMixin {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -50,8 +54,9 @@ class _LoginScreenState extends State<LoginScreen>
     setState(() => _isLoading = true);
 
     try {
+      final emailVal = _emailController.text.trim();
       await _authService.signIn(
-        email: _emailController.text.trim(),
+        email: emailVal,
         password: _passwordController.text.trim(),
       );
 
@@ -60,26 +65,7 @@ class _LoginScreenState extends State<LoginScreen>
       context.go('/main');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              Icon(Icons.error_outline, color: Colors.white, size: 20),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  e.toString().replaceFirst('Exception: ', ''),
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
-            ],
-          ),
-          backgroundColor: const Color(0xFFEF4444),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          margin: const EdgeInsets.all(16),
-        ),
-      );
+      AlertService.showError(context, e);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -159,45 +145,16 @@ class _LoginScreenState extends State<LoginScreen>
                 if (!ctx.mounted) return;
                 Navigator.pop(ctx);
                 if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Row(
-                      children: [
-                        Icon(Icons.check_circle_outline,
-                            color: Colors.white, size: 20),
-                        SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            'Password reset link sent! Check your email.',
-                            style: TextStyle(color: context.primaryButtonText),
-                          ),
-                        ),
-                      ],
-                    ),
-                    backgroundColor: context.activeAccent,
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    margin: const EdgeInsets.all(16),
-                  ),
+                AlertService.showSuccess(
+                  context,
+                  'Password Reset Sent',
+                  'A password reset link has been sent to your email address.',
                 );
               } catch (e) {
                 if (!ctx.mounted) return;
                 Navigator.pop(ctx);
                 if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      e.toString().replaceFirst('Exception: ', ''),
-                      style: TextStyle(color: Colors.white),
-                    ),
-                    backgroundColor: const Color(0xFFEF4444),
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    margin: const EdgeInsets.all(16),
-                  ),
-                );
+                AlertService.showError(context, e);
               }
             },
             style: ElevatedButton.styleFrom(
@@ -276,17 +233,13 @@ class _LoginScreenState extends State<LoginScreen>
                         height: 100,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [context.activeAccent, Color(0xFF3ED65C)],
-                          ),
+                          color: Colors.white,
                           boxShadow: [
                             BoxShadow(
-                              color: context.activeAccent
-                                  .withValues(alpha: 0.4 * _glowAnimation.value),
-                              blurRadius: 30 * _glowAnimation.value,
-                              spreadRadius: 5 * _glowAnimation.value,
+                              color: Colors.black
+                                  .withValues(alpha: 0.08 + 0.07 * _glowAnimation.value),
+                              blurRadius: 20 + 10 * _glowAnimation.value,
+                              spreadRadius: 2 * _glowAnimation.value,
                             ),
                           ],
                         ),
@@ -380,8 +333,8 @@ class _LoginScreenState extends State<LoginScreen>
                             if (val == null || val.trim().isEmpty) {
                               return 'Please enter your password';
                             }
-                            if (val.trim().length < 6) {
-                              return 'Password must be at least 6 characters';
+                            if (val.trim().length < 8) {
+                              return 'Password must be at least 8 characters.';
                             }
                             return null;
                           },
@@ -389,12 +342,25 @@ class _LoginScreenState extends State<LoginScreen>
                             hint: 'Password',
                             prefixIcon: Icons.lock_outline,
                             suffixIcon: IconButton(
-                              icon: Icon(
-                                _obscurePassword
-                                    ? Icons.visibility_off_outlined
-                                    : Icons.visibility_outlined,
-                                color: context.textMuted,
-                                size: 20,
+                              icon: AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 250),
+                                transitionBuilder: (child, animation) {
+                                  return ScaleTransition(
+                                    scale: animation,
+                                    child: RotationTransition(
+                                      turns: animation,
+                                      child: child,
+                                    ),
+                                  );
+                                },
+                                child: Icon(
+                                  _obscurePassword
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                  key: ValueKey<bool>(_obscurePassword),
+                                  color: context.textMuted,
+                                  size: 20,
+                                ),
                               ),
                               onPressed: () => setState(
                                   () => _obscurePassword = !_obscurePassword),

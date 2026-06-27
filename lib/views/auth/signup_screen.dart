@@ -1,23 +1,30 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../providers/app_providers.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_theme.dart';
 import 'package:go_router/go_router.dart';
 import '../../services/auth_service.dart';
 import '../../services/user_service.dart';
+import '../../services/password_validator.dart';
+import '../../services/alert_service.dart';
+import '../widgets/password_validation_checklist.dart';
 
-
-class SignupScreen extends StatefulWidget {
+class SignupScreen extends ConsumerStatefulWidget {
   const SignupScreen({super.key});
 
   @override
-  State<SignupScreen> createState() => _SignupScreenState();
+  ConsumerState<SignupScreen> createState() => _SignupScreenState();
 }
 
-class _SignupScreenState extends State<SignupScreen>
+class _SignupScreenState extends ConsumerState<SignupScreen>
     with SingleTickerProviderStateMixin {
   final _usernameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  final _passwordFocusNode = FocusNode();
   final _formKey = GlobalKey<FormState>();
   final _authService = AuthService();
   final _userService = UserService();
@@ -47,6 +54,7 @@ class _SignupScreenState extends State<SignupScreen>
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
+    _passwordFocusNode.dispose();
     _glowController.dispose();
     super.dispose();
   }
@@ -57,46 +65,55 @@ class _SignupScreenState extends State<SignupScreen>
     setState(() => _isLoading = true);
 
     try {
-      final response = await _authService.signUp(
-        email: _emailController.text.trim(),
+      final emailVal = _emailController.text.trim();
+      final usernameVal = _usernameController.text.trim();
+      
+      final authResponse = await _authService.signUp(
+        email: emailVal,
         password: _passwordController.text.trim(),
+        username: usernameVal,
       );
 
-      // Create user profile in the users table
-      final userId = response.user?.id;
-      if (userId != null) {
+      final user = authResponse.user;
+      if (user != null) {
+        // Create user profile in the database immediately
         await _userService.createUser(
-          userId: userId,
-          email: _emailController.text.trim(),
-          username: _usernameController.text.trim(),
+          userId: user.id,
+          username: usernameVal,
+          email: emailVal,
         );
       }
 
+      // Invalidate and refresh user state to populate providers immediately
+      ref.invalidate(userProvider);
+      ref.invalidate(blockedUrlsProvider);
+      ref.invalidate(scanLimitProvider);
+      ref.invalidate(subscriptionProvider);
+      await ref.read(userProvider.notifier).refreshUser();
+
       if (!mounted) return;
 
-      context.go('/main');
-    } catch (e) {
+      AlertService.showSuccess(
+        context,
+        'Account Created',
+        'Welcome to URL Defender!',
+      );
+
+      context.go('/dashboard');
+    } catch (e, stack) {
+      _logSupabaseError(e, stack);
+
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              Icon(Icons.error_outline, color: Colors.white, size: 20),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  e.toString().replaceFirst('Exception: ', ''),
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
-            ],
-          ),
-          backgroundColor: const Color(0xFFEF4444),
-          behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          margin: const EdgeInsets.all(16),
-        ),
+
+      final description = kDebugMode
+          ? e.toString()
+          : 'Failed to create account. Please try again in a few moments.';
+
+      AlertService.showAlert(
+        context,
+        type: AlertType.error,
+        title: 'Signup Failed',
+        description: description,
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -144,6 +161,37 @@ class _SignupScreenState extends State<SignupScreen>
     );
   }
 
+  Widget _buildConfirmPasswordMatchIndicator() {
+    final confirmText = _confirmPasswordController.text;
+    if (confirmText.isEmpty) return const SizedBox.shrink();
+
+    final matches = confirmText.trim() == _passwordController.text.trim();
+    
+    // If passwords match but the password is weak, do not show success indicator
+    if (matches && PasswordValidator.getErrorMessage(_passwordController.text) != null) {
+      return const SizedBox.shrink();
+    }
+
+    final color = matches ? const Color(0xFF10B981) : const Color(0xFFEF4444);
+    final text = matches ? '✓ Passwords match' : '✗ Passwords do not match';
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, left: 4),
+      child: Row(
+        children: [
+          Text(
+            text,
+            style: TextStyle(
+              color: color,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -166,17 +214,13 @@ class _SignupScreenState extends State<SignupScreen>
                         height: 90,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [context.activeAccent, Color(0xFF3ED65C)],
-                          ),
+                          color: Colors.white,
                           boxShadow: [
                             BoxShadow(
-                              color: context.activeAccent
-                                  .withValues(alpha: 0.4 * _glowAnimation.value),
-                              blurRadius: 28 * _glowAnimation.value,
-                              spreadRadius: 4 * _glowAnimation.value,
+                              color: Colors.black
+                                  .withValues(alpha: 0.08 + 0.07 * _glowAnimation.value),
+                              blurRadius: 18 + 10 * _glowAnimation.value,
+                              spreadRadius: 2 * _glowAnimation.value,
                             ),
                           ],
                         ),
@@ -239,6 +283,7 @@ class _SignupScreenState extends State<SignupScreen>
                         // ── Username Field ──
                         TextFormField(
                           controller: _usernameController,
+                          onChanged: (val) => setState(() {}),
                           style: TextStyle(
                               color: context.textPrimary, fontSize: 14),
                           validator: (val) {
@@ -261,6 +306,7 @@ class _SignupScreenState extends State<SignupScreen>
                         // ── Email Field ──
                         TextFormField(
                           controller: _emailController,
+                          onChanged: (val) => setState(() {}),
                           keyboardType: TextInputType.emailAddress,
                           style: TextStyle(
                               color: context.textPrimary, fontSize: 14),
@@ -285,6 +331,8 @@ class _SignupScreenState extends State<SignupScreen>
                         // ── Password Field ──
                         TextFormField(
                           controller: _passwordController,
+                          focusNode: _passwordFocusNode,
+                          onChanged: (val) => setState(() {}),
                           obscureText: _obscurePassword,
                           style: TextStyle(
                               color: context.textPrimary, fontSize: 14),
@@ -292,21 +340,31 @@ class _SignupScreenState extends State<SignupScreen>
                             if (val == null || val.trim().isEmpty) {
                               return 'Please enter a password';
                             }
-                            if (val.trim().length < 6) {
-                              return 'Password must be at least 6 characters';
-                            }
                             return null;
                           },
                           decoration: _buildInputDecoration(
                             hint: 'Password',
                             prefixIcon: Icons.lock_outline,
                             suffixIcon: IconButton(
-                              icon: Icon(
-                                _obscurePassword
-                                    ? Icons.visibility_off_outlined
-                                    : Icons.visibility_outlined,
-                                color: context.textMuted,
-                                size: 20,
+                              icon: AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 250),
+                                transitionBuilder: (child, animation) {
+                                  return ScaleTransition(
+                                    scale: animation,
+                                    child: RotationTransition(
+                                      turns: animation,
+                                      child: child,
+                                    ),
+                                  );
+                                },
+                                child: Icon(
+                                  _obscurePassword
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                  key: ValueKey<bool>(_obscurePassword),
+                                  color: context.textMuted,
+                                  size: 20,
+                                ),
                               ),
                               onPressed: () => setState(
                                   () => _obscurePassword = !_obscurePassword),
@@ -314,11 +372,17 @@ class _SignupScreenState extends State<SignupScreen>
                           ),
                         ),
 
+                        // ── Password Validation Checklist ──
+                        PasswordValidationChecklist(
+                          password: _passwordController.text,
+                        ),
+
                         const SizedBox(height: 16),
 
                         // ── Confirm Password Field ──
                         TextFormField(
                           controller: _confirmPasswordController,
+                          onChanged: (val) => setState(() {}),
                           obscureText: _obscureConfirmPassword,
                           style: TextStyle(
                               color: context.textPrimary, fontSize: 14),
@@ -336,12 +400,25 @@ class _SignupScreenState extends State<SignupScreen>
                             hint: 'Confirm password',
                             prefixIcon: Icons.lock_outline,
                             suffixIcon: IconButton(
-                              icon: Icon(
-                                _obscureConfirmPassword
-                                    ? Icons.visibility_off_outlined
-                                    : Icons.visibility_outlined,
-                                color: context.textMuted,
-                                size: 20,
+                              icon: AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 250),
+                                transitionBuilder: (child, animation) {
+                                  return ScaleTransition(
+                                    scale: animation,
+                                    child: RotationTransition(
+                                      turns: animation,
+                                      child: child,
+                                    ),
+                                  );
+                                },
+                                child: Icon(
+                                  _obscureConfirmPassword
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                  key: ValueKey<bool>(_obscureConfirmPassword),
+                                  color: context.textMuted,
+                                  size: 20,
+                                ),
                               ),
                               onPressed: () => setState(() =>
                                   _obscureConfirmPassword =
@@ -350,59 +427,81 @@ class _SignupScreenState extends State<SignupScreen>
                           ),
                         ),
 
+                        // ── Real-Time Confirm Password Match Indicator ──
+                        _buildConfirmPasswordMatchIndicator(),
+
                         const SizedBox(height: 28),
 
                         // ── Sign Up Button ──
-                        SizedBox(
-                          width: double.infinity,
-                          height: 54,
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [
-                                  context.activeAccent,
-                                  Color(0xFF3ED65C),
-                                ],
-                              ),
-                              borderRadius: BorderRadius.circular(14),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: context.activeAccent
-                                      .withValues(alpha: 0.3),
-                                  blurRadius: 12,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: ElevatedButton(
-                              onPressed: _isLoading ? null : _handleSignup,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.transparent,
-                                shadowColor: Colors.transparent,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                              ),
-                              child: _isLoading
-                                  ? SizedBox(
-                                      width: 22,
-                                      height: 22,
-                                      child: CircularProgressIndicator(
-                                        color: context.primaryButtonText,
-                                        strokeWidth: 2.5,
-                                      ),
-                                    )
-                                  : Text(
-                                      'Sign Up',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w700,
-                                        color: context.primaryButtonText,
-                                        letterSpacing: 0.5,
-                                      ),
+                        Builder(
+                          builder: (context) {
+                            final bool isFormValid = _usernameController.text.trim().length >= 3 &&
+                                RegExp(r'^[\w\-.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(_emailController.text.trim()) &&
+                                PasswordValidator.getErrorMessage(_passwordController.text) == null &&
+                                _confirmPasswordController.text.trim() == _passwordController.text.trim() &&
+                                _confirmPasswordController.text.isNotEmpty;
+
+                            final isBtnEnabled = isFormValid && !_isLoading;
+
+                            final boxDecoration = isBtnEnabled
+                                ? BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        context.activeAccent,
+                                        const Color(0xFF3ED65C),
+                                      ],
                                     ),
-                            ),
-                          ),
+                                    borderRadius: BorderRadius.circular(14),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: context.activeAccent.withValues(alpha: 0.3),
+                                        blurRadius: 12,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
+                                  )
+                                : BoxDecoration(
+                                    color: context.border,
+                                    borderRadius: BorderRadius.circular(14),
+                                  );
+
+                            return AnimatedContainer(
+                              duration: const Duration(milliseconds: 300),
+                              width: double.infinity,
+                              height: 54,
+                              decoration: boxDecoration,
+                              child: ElevatedButton(
+                                onPressed: isBtnEnabled ? _handleSignup : null,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.transparent,
+                                  shadowColor: Colors.transparent,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                ),
+                                child: _isLoading
+                                    ? SizedBox(
+                                        width: 22,
+                                        height: 22,
+                                        child: CircularProgressIndicator(
+                                          color: context.primaryButtonText,
+                                          strokeWidth: 2.5,
+                                        ),
+                                      )
+                                    : Text(
+                                        'Sign Up',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w700,
+                                          color: isBtnEnabled
+                                              ? context.primaryButtonText
+                                              : context.textMuted,
+                                          letterSpacing: 0.5,
+                                        ),
+                                      ),
+                              ),
+                            );
+                          }
                         ),
                       ],
                     ),
@@ -442,6 +541,25 @@ class _SignupScreenState extends State<SignupScreen>
       ),
     );
   }
+}
+
+void _logSupabaseError(dynamic e, StackTrace stack) {
+  debugPrint('Supabase Error:');
+  if (e is AuthException) {
+    debugPrint('Status Code: ${e.statusCode}');
+    debugPrint('Code: ${e.code}');
+    debugPrint('Message: ${e.message}');
+    debugPrint('Details: null');
+    debugPrint('Hint: null');
+  } else if (e is PostgrestException) {
+    debugPrint('Code: ${e.code}');
+    debugPrint('Message: ${e.message}');
+    debugPrint('Details: ${e.details}');
+    debugPrint('Hint: ${e.hint}');
+  } else {
+    debugPrint('Message: ${e.toString()}');
+  }
+  debugPrint('Stack Trace:\n$stack');
 }
 
 
