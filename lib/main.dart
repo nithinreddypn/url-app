@@ -2,8 +2,6 @@ import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'services/supabase_config.dart';
 import 'theme/app_theme.dart';
 import 'router/app_router.dart';
 import 'providers/app_providers.dart';
@@ -26,11 +24,6 @@ void main() {
       }
       return false;
     };
-
-    await Supabase.initialize(
-      url: SupabaseConfig.supabaseUrl,
-      publishableKey: SupabaseConfig.supabaseAnonKey,
-    );
 
     runApp(
       const ProviderScope(

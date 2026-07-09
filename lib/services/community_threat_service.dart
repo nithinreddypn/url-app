@@ -1,21 +1,45 @@
 import '../models/community_threat_model.dart';
-import 'supabase_config.dart';
 
 class CommunityThreatService {
-  final _client = SupabaseConfig.client;
-  static const _table = 'community_threats';
+  static final List<CommunityThreatModel> _localThreats = [
+    CommunityThreatModel(
+      threatId: 'threat_1',
+      threatName: 'PayPal Credential Harvester',
+      threatType: 'phishing',
+      description: 'Spoofed PayPal login page attempting to capture credentials and credit card details.',
+      severity: 'critical',
+      reportedBy: 'Nexabot',
+      url: 'http://paypal-verification-secure.com/login',
+      reportCount: 15,
+      reportedAt: DateTime.now().subtract(const Duration(hours: 4)),
+    ),
+    CommunityThreatModel(
+      threatId: 'threat_2',
+      threatName: 'Ransomware Dropper Script',
+      threatType: 'malware',
+      description: 'Host serving a malicious JS file that executes a silent drive-by download of LockBit payload.',
+      severity: 'critical',
+      reportedBy: 'Defender',
+      url: 'http://cdn-update-java.net/patch.js',
+      reportCount: 22,
+      reportedAt: DateTime.now().subtract(const Duration(days: 1)),
+    ),
+    CommunityThreatModel(
+      threatId: 'threat_3',
+      threatName: 'Fake Amazon Gift Card Hub',
+      threatType: 'scam',
+      description: 'Interactive survey scam promising \$1000 gift cards to extract personal phone numbers.',
+      severity: 'medium',
+      reportedBy: 'SafetyAgent',
+      url: 'http://amazon-survey-rewards.xyz/claim',
+      reportCount: 8,
+      reportedAt: DateTime.now().subtract(const Duration(days: 3)),
+    ),
+  ];
 
   /// Fetch all community-reported threats.
   Future<List<CommunityThreatModel>> getThreats({int limit = 50}) async {
-    final response = await _client
-        .from(_table)
-        .select()
-        .order('reported_at', ascending: false)
-        .limit(limit);
-
-    return (response as List)
-        .map((json) => CommunityThreatModel.fromJson(json))
-        .toList();
+    return _localThreats.take(limit).toList();
   }
 
   /// Report a new community threat.
@@ -27,96 +51,77 @@ class CommunityThreatService {
     String? reportedBy,
     String? url,
   }) async {
-    final response = await _client.from(_table).insert({
-      'threat_name': threatName,
-      'threat_type': threatType,
-      'description': description,
-      'severity': severity,
-      'reported_by': reportedBy,
-      'url': url,
-      'report_count': 1,
-    }).select().single();
-
-    return CommunityThreatModel.fromJson(response);
+    final newThreat = CommunityThreatModel(
+      threatId: DateTime.now().millisecondsSinceEpoch.toString(),
+      threatName: threatName ?? 'Reported Threat',
+      threatType: threatType ?? 'suspicious',
+      description: description ?? 'Reported by user',
+      severity: severity ?? 'medium',
+      reportedBy: reportedBy ?? 'Guest',
+      url: url ?? '',
+      reportCount: 1,
+      reportedAt: DateTime.now(),
+    );
+    _localThreats.insert(0, newThreat);
+    return newThreat;
   }
 
   /// Get a threat by its URL (unique constraint).
   Future<CommunityThreatModel?> getThreatByUrl(String url) async {
-    final response = await _client
-        .from(_table)
-        .select()
-        .eq('url', url)
-        .maybeSingle();
-
-    if (response == null) return null;
-    return CommunityThreatModel.fromJson(response);
+    try {
+      return _localThreats.firstWhere((threat) => threat.url == url);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Get a threat by its ID.
   Future<CommunityThreatModel?> getThreatById(String threatId) async {
-    final response = await _client
-        .from(_table)
-        .select()
-        .eq('threat_id', threatId)
-        .maybeSingle();
-
-    if (response == null) return null;
-    return CommunityThreatModel.fromJson(response);
+    try {
+      return _localThreats.firstWhere((threat) => threat.threatId == threatId);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Increment the report count for an existing threat.
   Future<CommunityThreatModel> incrementReportCount(String threatId) async {
-    // Fetch current count, then increment
-    final threat = await getThreatById(threatId);
-    if (threat == null) throw Exception('Threat not found');
+    final threatIdx = _localThreats.indexWhere((t) => t.threatId == threatId);
+    if (threatIdx == -1) throw Exception('Threat not found');
 
-    final response = await _client
-        .from(_table)
-        .update({'report_count': threat.reportCount + 1})
-        .eq('threat_id', threatId)
-        .select()
-        .single();
-
-    return CommunityThreatModel.fromJson(response);
+    final threat = _localThreats[threatIdx];
+    final updated = CommunityThreatModel(
+      threatId: threat.threatId,
+      threatName: threat.threatName,
+      threatType: threat.threatType,
+      description: threat.description,
+      severity: threat.severity,
+      reportedBy: threat.reportedBy,
+      url: threat.url,
+      reportCount: threat.reportCount + 1,
+      reportedAt: threat.reportedAt,
+    );
+    _localThreats[threatIdx] = updated;
+    return updated;
   }
 
   /// Get threats filtered by severity (e.g., 'critical', 'high', 'medium', 'low').
   Future<List<CommunityThreatModel>> getThreatsBySeverity(String severity) async {
-    final response = await _client
-        .from(_table)
-        .select()
-        .eq('severity', severity)
-        .order('reported_at', ascending: false);
-
-    return (response as List)
-        .map((json) => CommunityThreatModel.fromJson(json))
-        .toList();
+    return _localThreats.where((t) => t.severity == severity).toList();
   }
 
   /// Get threats filtered by type (e.g., 'phishing', 'malware').
   Future<List<CommunityThreatModel>> getThreatsByType(String type) async {
-    final response = await _client
-        .from(_table)
-        .select()
-        .eq('threat_type', type)
-        .order('reported_at', ascending: false);
-
-    return (response as List)
-        .map((json) => CommunityThreatModel.fromJson(json))
-        .toList();
+    return _localThreats.where((t) => t.threatType == type).toList();
   }
 
   /// Delete a threat by its ID.
   Future<void> deleteThreat(String threatId) async {
-    await _client.from(_table).delete().eq('threat_id', threatId);
+    _localThreats.removeWhere((t) => t.threatId == threatId);
   }
 
   /// Listen to real-time threat updates.
   Stream<List<Map<String, dynamic>>> onThreatUpdates() {
-    return _client
-        .from(_table)
-        .stream(primaryKey: ['threat_id'])
-        .order('reported_at', ascending: false)
-        .limit(50);
+    return Stream.value(_localThreats.map((t) => t.toJson()).toList());
   }
 }

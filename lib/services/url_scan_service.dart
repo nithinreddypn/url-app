@@ -1,13 +1,56 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/url_scan_model.dart';
-import 'supabase_config.dart';
 
 class UrlScanService {
-  final _client = SupabaseConfig.client;
-  static const _table = 'url_scans';
+  static final List<UrlScanModel> _localScans = [];
 
-  /// Insert a new URL scan result.
+  static bool _initialized = false;
+
+  static Future<void> _ensureInitialized() async {
+    if (_initialized) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final scansJson = prefs.getString('local_scans');
+      if (scansJson != null) {
+        final decoded = jsonDecode(scansJson) as List;
+        final loadedScans = <UrlScanModel>[];
+        for (final item in decoded) {
+          try {
+            if (item is Map<String, dynamic>) {
+              loadedScans.add(UrlScanModel.fromJson(item));
+            } else if (item is Map) {
+              loadedScans.add(UrlScanModel.fromJson(Map<String, dynamic>.from(item)));
+            }
+          } catch (e) {
+            print('Error parsing individual scan: $e');
+          }
+        }
+        _localScans.clear();
+        _localScans.addAll(loadedScans);
+      }
+    } catch (e) {
+      print('Error initializing local scans: $e');
+    }
+    _initialized = true;
+  }
+
+  static Future<void> _saveToPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final scansJson = jsonEncode(_localScans.map((s) => s.toJson()).toList());
+      await prefs.setString('local_scans', scansJson);
+    } catch (e) {
+      print('Error saving local scans: $e');
+    }
+  }
+
+  static int getLocalScansCount(String userId) {
+    return _localScans.where((scan) => scan.userId == userId).length;
+  }
+
+  /// Insert a new URL scan result (locally in memory).
   Future<UrlScanModel> scanUrl({
     required String userId,
     required String scannedUrl,
@@ -18,18 +61,23 @@ class UrlScanService {
     int heuristicHits = 0,
     int communityReports = 0,
   }) async {
-    final response = await _client.from(_table).insert({
-      'user_id': userId,
-      'scanned_url': scannedUrl,
-      'scan_result': scanResult,
-      'threat_type': threatType,
-      'risk_score': riskScore,
-      'virus_total_flags': virusTotalFlags,
-      'heuristic_hits': heuristicHits,
-      'community_reports': communityReports,
-    }).select().single();
+    await _ensureInitialized();
+    final newScan = UrlScanModel(
+      scanId: DateTime.now().millisecondsSinceEpoch.toString(),
+      userId: userId,
+      scannedUrl: scannedUrl,
+      scanResult: scanResult ?? 'safe',
+      threatType: threatType,
+      riskScore: riskScore ?? 0,
+      virusTotalFlags: virusTotalFlags,
+      heuristicHits: heuristicHits,
+      communityReports: communityReports,
+      scannedAt: DateTime.now(),
+    );
 
-    return UrlScanModel.fromJson(response);
+    _localScans.insert(0, newScan);
+    await _saveToPrefs();
+    return newScan;
   }
 
   /// Real scan utilizing VirusTotal API
@@ -137,7 +185,6 @@ class UrlScanService {
     Map<String, dynamic>? attributes;
 
     try {
-      // 1. Try GET report
       final getResponse = await http.get(
         Uri.parse('https://www.virustotal.com/api/v3/urls/$urlId'),
         headers: {
@@ -150,7 +197,6 @@ class UrlScanService {
         final decoded = jsonDecode(getResponse.body);
         attributes = decoded['data']['attributes'] as Map<String, dynamic>?;
       } else if (getResponse.statusCode == 404) {
-        // 2. Submit URL for scanning
         final postResponse = await http.post(
           Uri.parse('https://www.virustotal.com/api/v3/urls'),
           headers: {
@@ -165,7 +211,6 @@ class UrlScanService {
           final postData = jsonDecode(postResponse.body);
           final analysisId = postData['data']['id'] as String;
 
-          // 3. Poll for analysis report (up to 10 times)
           for (int i = 0; i < 10; i++) {
             await Future.delayed(const Duration(seconds: 2));
             final pollResponse = await http.get(
@@ -180,7 +225,6 @@ class UrlScanService {
               final pollData = jsonDecode(pollResponse.body);
               final status = pollData['data']['attributes']['status'];
               if (status == 'completed') {
-                // Once complete, fetch the URL report to get full attributes
                 final finalGetResponse = await http.get(
                   Uri.parse('https://www.virustotal.com/api/v3/urls/$urlId'),
                   headers: {
@@ -215,24 +259,20 @@ class UrlScanService {
       throw Exception('VirusTotal scan timed out or failed to retrieve analysis report.');
     }
 
-    // 4. Parse statistics
     final stats = attributes['last_analysis_stats'] as Map<String, dynamic>;
     final malicious = stats['malicious'] as int? ?? 0;
     final suspicious = stats['suspicious'] as int? ?? 0;
 
-    // Calculate risk score based on engines consensus
     int riskScore = 0;
     if (malicious > 0) {
       riskScore = (malicious * 15 + suspicious * 5).clamp(0, 100);
-      if (riskScore < 15) riskScore = 15; // Minimum risk for any malicious flag
+      if (riskScore < 15) riskScore = 15;
     } else if (suspicious > 0) {
       riskScore = (suspicious * 10).clamp(0, 50);
     }
 
-    // Even 1 malicious flag should mark as dangerous
     final scanResult = (malicious > 0 || suspicious >= 3) ? 'dangerous' : 'safe';
 
-    // Parse threat type from engine outputs
     String? threatType;
     if (scanResult == 'dangerous') {
       threatType = 'suspicious';
@@ -256,7 +296,6 @@ class UrlScanService {
       }
     }
 
-    // Insert result into Supabase database
     return await scanUrl(
       userId: userId,
       scannedUrl: scannedUrl,
@@ -271,84 +310,60 @@ class UrlScanService {
 
   /// Get all scans for a specific user.
   Future<List<UrlScanModel>> getUserScans(String userId) async {
-    final response = await _client
-        .from(_table)
-        .select()
-        .eq('user_id', userId)
-        .order('scanned_at', ascending: false);
-
-    return (response as List)
-        .map((json) => UrlScanModel.fromJson(json))
-        .toList();
+    await _ensureInitialized();
+    return _localScans.where((scan) => scan.userId == userId).toList();
   }
 
   /// Get a specific scan by its ID.
   Future<UrlScanModel?> getScanById(String scanId, {required String userId}) async {
-    final response = await _client
-        .from(_table)
-        .select()
-        .eq('scan_id', scanId)
-        .eq('user_id', userId)
-        .maybeSingle();
-
-    if (response == null) return null;
-    return UrlScanModel.fromJson(response);
+    await _ensureInitialized();
+    try {
+      return _localScans.firstWhere((scan) => scan.scanId == scanId && scan.userId == userId);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Get the most recent scans, optionally limited.
   Future<List<UrlScanModel>> getRecentScans({required String userId, int limit = 20}) async {
-    final response = await _client
-        .from(_table)
-        .select()
-        .eq('user_id', userId)
-        .order('scanned_at', ascending: false)
-        .limit(limit);
-
-    return (response as List)
-        .map((json) => UrlScanModel.fromJson(json))
+    await _ensureInitialized();
+    return _localScans
+        .where((scan) => scan.userId == userId)
+        .take(limit)
         .toList();
   }
 
   /// Get scans filtered by result (e.g., 'safe', 'dangerous').
   Future<List<UrlScanModel>> getScansByResult(String result, {required String userId}) async {
-    final response = await _client
-        .from(_table)
-        .select()
-        .eq('scan_result', result)
-        .eq('user_id', userId)
-        .order('scanned_at', ascending: false);
-
-    return (response as List)
-        .map((json) => UrlScanModel.fromJson(json))
+    await _ensureInitialized();
+    return _localScans
+        .where((scan) => scan.scanResult == result && scan.userId == userId)
         .toList();
   }
 
   /// Delete a scan by its ID.
   Future<void> deleteScan(String scanId, {required String userId}) async {
-    await _client
-        .from(_table)
-        .delete()
-        .eq('scan_id', scanId)
-        .eq('user_id', userId);
+    await _ensureInitialized();
+    if (scanId == 'all') {
+      _localScans.removeWhere((scan) => scan.userId == userId);
+    } else {
+      _localScans.removeWhere((scan) => scan.scanId == scanId && scan.userId == userId);
+    }
+    await _saveToPrefs();
   }
 
   /// Get the total scan count for a user.
   Future<int> getUserScanCount(String userId) async {
-    final response = await _client
-        .from(_table)
-        .select()
-        .eq('user_id', userId);
-
-    return (response as List).length;
+    await _ensureInitialized();
+    return getLocalScansCount(userId);
   }
 
   /// Listen to real-time scan inserts.
-  Stream<List<Map<String, dynamic>>> onNewScans({required String userId}) {
-    return _client
-        .from(_table)
-        .stream(primaryKey: ['scan_id'])
-        .eq('user_id', userId)
-        .order('scanned_at', ascending: false)
-        .limit(50);
+  Stream<List<Map<String, dynamic>>> onNewScans({required String userId}) async* {
+    await _ensureInitialized();
+    yield _localScans
+        .where((scan) => scan.userId == userId)
+        .map((scan) => scan.toJson())
+        .toList();
   }
 }

@@ -1,32 +1,56 @@
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart';
-import 'supabase_config.dart';
 
 class UserService {
-  final _client = SupabaseConfig.client;
-  static const _table = 'users';
+  static final List<UserModel> _localUsers = [];
+
+  static bool _initialized = false;
+
+  static Future<void> _ensureInitialized() async {
+    if (_initialized) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final usersJson = prefs.getString('local_users');
+      if (usersJson != null) {
+        final decoded = jsonDecode(usersJson) as List;
+        _localUsers.clear();
+        _localUsers.addAll(decoded.map((json) => UserModel.fromJson(json as Map<String, dynamic>)));
+      }
+    } catch (e) {
+      print('Error initializing local users: $e');
+    }
+    _initialized = true;
+  }
+
+  static Future<void> _saveToPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final usersJson = jsonEncode(_localUsers.map((u) => u.toJson()).toList());
+      await prefs.setString('local_users', usersJson);
+    } catch (e) {
+      print('Error saving local users: $e');
+    }
+  }
 
   /// Fetch a user by their user ID.
   Future<UserModel?> getUser(String userId) async {
-    final response = await _client
-        .from(_table)
-        .select()
-        .eq('user_id', userId)
-        .maybeSingle();
-
-    if (response == null) return null;
-    return UserModel.fromJson(response);
+    await _ensureInitialized();
+    try {
+      return _localUsers.firstWhere((u) => u.userId == userId);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Fetch a user by their email address.
   Future<UserModel?> getUserByEmail(String email) async {
-    final response = await _client
-        .from(_table)
-        .select()
-        .eq('email', email)
-        .maybeSingle();
-
-    if (response == null) return null;
-    return UserModel.fromJson(response);
+    await _ensureInitialized();
+    try {
+      return _localUsers.firstWhere((u) => u.email.toLowerCase() == email.toLowerCase());
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Create a new user profile in the users table.
@@ -36,26 +60,50 @@ class UserService {
     required String email,
     String role = 'user',
   }) async {
-    final response = await _client.from(_table).upsert({
-      'user_id': userId,
-      'username': username,
-      'email': email,
-      'role': role,
-    }).select().single();
-
-    return UserModel.fromJson(response);
+    await _ensureInitialized();
+    final newUser = UserModel(
+      userId: userId,
+      username: username,
+      email: email,
+      isPremium: false,
+      role: role,
+    );
+    _localUsers.removeWhere((u) => u.userId == userId);
+    _localUsers.add(newUser);
+    await _saveToPrefs();
+    return newUser;
   }
 
   /// Update user profile fields.
   Future<UserModel> updateUser(String userId, Map<String, dynamic> updates) async {
-    final response = await _client
-        .from(_table)
-        .update(updates)
-        .eq('user_id', userId)
-        .select()
-        .single();
+    await _ensureInitialized();
+    final userIdx = _localUsers.indexWhere((u) => u.userId == userId);
+    if (userIdx == -1) {
+      // Create user if not found
+      return await createUser(
+        userId: userId,
+        username: updates['username'] as String? ?? 'User',
+        email: updates['email'] as String? ?? '',
+        role: updates['role'] as String? ?? 'user',
+      );
+    }
 
-    return UserModel.fromJson(response);
+    final user = _localUsers[userIdx];
+    final updated = UserModel(
+      userId: user.userId,
+      username: updates['username'] as String? ?? user.username,
+      email: updates['email'] as String? ?? user.email,
+      isPremium: updates['is_premium'] as bool? ?? user.isPremium,
+      lifetimeScanCount: updates['lifetime_scan_count'] as int? ?? user.lifetimeScanCount,
+      blockedList: updates['blocked_list'] != null 
+          ? List<String>.from(updates['blocked_list'] as Iterable) 
+          : user.blockedList,
+      role: updates['role'] as String? ?? user.role,
+      createdAt: user.createdAt,
+    );
+    _localUsers[userIdx] = updated;
+    await _saveToPrefs();
+    return updated;
   }
 
   /// Update the user's blocked list.

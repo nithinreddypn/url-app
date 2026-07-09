@@ -212,6 +212,29 @@ SET blocked_list = COALESCE(
     '{}'::text[]
 );
 
+-- 14.5 Create function and trigger to handle automatic profile creation on signup
+-- This cleans up any old orphaned profiles with the same email if a user is recreated in auth
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  DELETE FROM public.users WHERE email = NEW.email;
+  
+  INSERT INTO public.users (user_id, username, email, role)
+  VALUES (
+    NEW.id,
+    COALESCE(NEW.raw_user_meta_data->>'username', SPLIT_PART(NEW.email, '@', 1)),
+    NEW.email,
+    'user'
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
 -- 15. Row Level Security (RLS) policies
 
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;

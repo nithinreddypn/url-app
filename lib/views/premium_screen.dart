@@ -317,7 +317,7 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
 
                       // Locate currently active selectedBilling plan
                       final displayedPlan = activePlans.firstWhere(
-                        (p) => p.name.toLowerCase() == _selectedBilling.toLowerCase(),
+                        (p) => p.name.toLowerCase().contains(_selectedBilling.toLowerCase()),
                         orElse: () => activePlans.first,
                       );
 
@@ -477,7 +477,7 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
   }
 
   Widget _buildPlanCard(PlanModel plan) {
-    final isYearly = plan.name.toLowerCase() == 'yearly';
+    final isYearly = plan.name.toLowerCase().contains('yearly');
     final priceLabel = isYearly ? '₹999 / year' : '₹99 / month';
 
     return Container(

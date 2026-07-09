@@ -4,6 +4,7 @@ import '../../theme/app_theme.dart';
 import 'package:go_router/go_router.dart';
 import '../../services/auth_service.dart';
 import '../../services/alert_service.dart';
+import '../../providers/app_providers.dart';
 
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -53,17 +54,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
     try {
       final emailVal = _emailController.text.trim();
-      await _authService.signIn(
-        email: emailVal,
-        password: _passwordController.text.trim(),
-      );
+      
+      // Perform client-side fake auth
+      ref.read(userProvider.notifier).login(emailVal, emailVal.split('@').first);
 
       if (!mounted) return;
 
       context.go('/main');
     } catch (e) {
       if (!mounted) return;
-      AlertService.showError(context, e);
+      AlertService.showError(context, e, customTitle: 'Unable to sign in');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -152,7 +152,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 if (!ctx.mounted) return;
                 Navigator.pop(ctx);
                 if (!mounted) return;
-                AlertService.showError(context, e);
+                AlertService.showError(context, e, customTitle: 'Unable to reset password');
               }
             },
             style: ElevatedButton.styleFrom(

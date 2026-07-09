@@ -1,70 +1,50 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'supabase_config.dart';
-
 class AuthService {
-  final _client = SupabaseConfig.client;
+  static String? _typedEmail;
+  static String? _typedUsername;
 
-  /// Sign up a new user with email and password.
-  Future<AuthResponse> signUp({
+  static String get typedEmail => _typedEmail ?? '';
+  static String get typedUsername => _typedUsername ?? '';
+
+  static set typedEmail(String val) => _typedEmail = val;
+  static set typedUsername(String val) => _typedUsername = val;
+
+  /// Sign up a new user with email and password (mocked client-side).
+  Future<dynamic> signUp({
     required String email,
     required String password,
     String? username,
   }) async {
-    final response = await _client.auth.signUp(
-      email: email,
-      password: password,
-      data: {
-        // ignore: use_null_aware_elements
-        if (username != null) 'username': username,
-      },
-    );
-    return response;
+    _typedEmail = email;
+    _typedUsername = username ?? email.split('@').first;
+    return null;
   }
 
-  /// Sign in with email and password.
-  Future<AuthResponse> signIn({
+  /// Sign in with email and password (mocked client-side).
+  Future<dynamic> signIn({
     required String email,
     required String password,
   }) async {
-    final response = await _client.auth.signInWithPassword(
-      email: email,
-      password: password,
-    );
-    return response;
+    _typedEmail = email;
+    _typedUsername = email.split('@').first;
+    return null;
   }
 
   /// Sign out the current user.
   Future<void> signOut() async {
-    await _client.auth.signOut();
-  }
-
-  /// Get the currently authenticated user, or null if not signed in.
-  User? getCurrentUser() {
-    return _client.auth.currentUser;
-  }
-
-  /// Get the current session, or null if not signed in.
-  Session? getCurrentSession() {
-    return _client.auth.currentSession;
+    _typedEmail = null;
+    _typedUsername = null;
   }
 
   /// Check if a user is currently signed in.
-  bool get isSignedIn => _client.auth.currentUser != null;
-
-  /// Listen to auth state changes (sign in, sign out, token refresh, etc.).
-  Stream<AuthState> onAuthStateChange() {
-    return _client.auth.onAuthStateChange;
-  }
+  bool get isSignedIn => _typedEmail != null;
 
   /// Send a password reset email.
   Future<void> resetPassword(String email) async {
-    await _client.auth.resetPasswordForEmail(email);
+    // Mock reset password
   }
 
   /// Update the current user's password.
-  Future<UserResponse> updatePassword(String newPassword) async {
-    return await _client.auth.updateUser(
-      UserAttributes(password: newPassword),
-    );
+  Future<dynamic> updatePassword(String newPassword) async {
+    return null;
   }
 }

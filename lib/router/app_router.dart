@@ -1,56 +1,39 @@
-import 'dart:async';
-import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../providers/app_providers.dart';
 import '../views/auth/auth_gate.dart';
 import '../views/auth/login_screen.dart';
 import '../views/auth/signup_screen.dart';
 import '../views/main_screen.dart';
-import '../views/premium_screen.dart';
+
 import '../views/scan_history_screen.dart';
 import '../views/blocked_urls_screen.dart';
 import '../views/auth/reset_password_screen.dart';
-
+import '../views/scan_detail_screen.dart';
 bool isPasswordRecoveryMode = false;
-
-class GoRouterRefreshStream extends ChangeNotifier {
-  late final StreamSubscription<AuthState> _subscription;
-
-  GoRouterRefreshStream(Stream<AuthState> stream) {
-    notifyListeners();
-    _subscription = stream.asBroadcastStream().listen(
-      (AuthState state) {
-        if (state.event == AuthChangeEvent.passwordRecovery) {
-          isPasswordRecoveryMode = true;
-        } else if (state.event == AuthChangeEvent.signedOut || state.event == AuthChangeEvent.signedIn) {
-          isPasswordRecoveryMode = false;
-        }
-        notifyListeners();
-      },
-    );
-  }
-
-  @override
-  void dispose() {
-    _subscription.cancel();
-    super.dispose();
-  }
-}
 
 final appRouter = GoRouter(
   initialLocation: '/auth_gate',
-  refreshListenable: GoRouterRefreshStream(Supabase.instance.client.auth.onAuthStateChange),
   redirect: (context, state) {
-    final session = Supabase.instance.client.auth.currentSession;
+    final container = ProviderScope.containerOf(context);
+    final user = container.read(userProvider);
     
+    // Check if the current URL/hash contains password recovery indicators
+    final urlString = state.uri.toString().toLowerCase();
+    final isRecoveryUrl = urlString.contains('recovery') || urlString.contains('type=recovery');
+    
+    if (isRecoveryUrl) {
+      isPasswordRecoveryMode = true;
+    }
+
     // Redirect user to password recovery if deep link flag is set
     if (isPasswordRecoveryMode) {
       if (state.matchedLocation == '/reset-password' || state.matchedLocation == '/reset_password') return null;
       return '/reset-password';
     }
 
-    if (session != null) {
-      // Email is verified (or bypassed) and session exists -> Dashboard
+    if (user != null) {
+      // User profile exists -> Dashboard
       final isLoggingIn = state.matchedLocation == '/login' ||
           state.matchedLocation == '/signup' ||
           state.matchedLocation == '/auth_gate';
@@ -59,7 +42,7 @@ final appRouter = GoRouter(
       }
       return null;
     } else {
-      // No active session
+      // No active user profile
       final isLoggingIn = state.matchedLocation == '/login' ||
           state.matchedLocation == '/signup' ||
           state.matchedLocation == '/auth_gate';
@@ -96,10 +79,7 @@ final appRouter = GoRouter(
       path: '/dashboard',
       builder: (context, state) => const MainScreen(),
     ),
-    GoRoute(
-      path: '/premium',
-      builder: (context, state) => PremiumScreen(),
-    ),
+
     GoRoute(
       path: '/history',
       builder: (context, state) => ScanHistoryScreen(),
@@ -107,6 +87,13 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/blocked_list',
       builder: (context, state) => const BlockedUrlsScreen(),
+    ),
+    GoRoute(
+      path: '/scan-detail/:id',
+      builder: (context, state) {
+        final id = state.pathParameters['id'] ?? '';
+        return ScanDetailScreen(scanId: id);
+      },
     ),
   ],
 );

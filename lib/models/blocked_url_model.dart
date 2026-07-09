@@ -23,9 +23,9 @@ class BlockedUrlModel {
 
   factory BlockedUrlModel.fromJson(Map<String, dynamic> json) {
     return BlockedUrlModel(
-      id: json['id'] as String,
-      userId: json['user_id'] as String,
-      url: json['url'] as String,
+      id: json['id'] as String? ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      userId: json['user_id'] as String? ?? '',
+      url: json['url'] as String? ?? '',
       reason: json['reason'] as String?,
       blockedAt: json['blocked_at'] != null
           ? _parseUtc(json['blocked_at'] as String)
@@ -35,9 +35,11 @@ class BlockedUrlModel {
 
   Map<String, dynamic> toJson() {
     return {
+      'id': id,
       'user_id': userId,
       'url': url,
       'reason': reason,
+      'blocked_at': blockedAt?.toIso8601String(),
     };
   }
 }

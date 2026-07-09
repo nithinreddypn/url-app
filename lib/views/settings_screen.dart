@@ -6,7 +6,6 @@ import 'package:go_router/go_router.dart';
 import '../services/auth_service.dart';
 import '../services/user_service.dart';
 import '../services/blocked_url_service.dart';
-import '../services/supabase_config.dart';
 import '../services/password_validator.dart';
 import '../services/alert_service.dart';
 import '../models/blocked_url_model.dart';
@@ -73,7 +72,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (user != null && user.username.isNotEmpty) {
       return user.username[0].toUpperCase();
     }
-    final email = user?.email ?? SupabaseConfig.client.auth.currentUser?.email;
+    final email = user?.email ?? ref.read(userProvider)?.email;
     if (email != null && email.isNotEmpty) {
       return email[0].toUpperCase();
     }
@@ -427,7 +426,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (confirmed == true) {
       try {
         ref.read(pendingSignupProvider.notifier).clear();
-        ref.invalidate(userProvider);
+        ref.read(userProvider.notifier).logout();
         ref.invalidate(blockedUrlsProvider);
         ref.invalidate(scanLimitProvider);
         ref.invalidate(subscriptionProvider);
@@ -527,7 +526,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   /// Shows a loading placeholder for the profile section when user data hasn't loaded yet.
   Widget _buildProfileLoadingSection() {
-    final email = SupabaseConfig.client.auth.currentUser?.email ?? 'Loading...';
+    final email = ref.read(userProvider)?.email ?? 'Loading...';
     final initial = email.isNotEmpty ? email[0].toUpperCase() : 'U';
 
     return Container(
@@ -667,7 +666,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget _buildProfileSection(UserModel user) {
     final email = user.email.isNotEmpty
         ? user.email
-        : (SupabaseConfig.client.auth.currentUser?.email ?? 'Not signed in');
+        : (ref.read(userProvider)?.email ?? 'Not signed in');
     final username = user.username.isNotEmpty ? user.username : 'Defender';
     final userInitial = _getUserInitial(user);
 

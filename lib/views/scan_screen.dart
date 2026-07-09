@@ -1,8 +1,8 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../services/supabase_config.dart';
 import '../services/url_scan_service.dart';
 import '../services/blocked_url_service.dart';
 import '../models/url_scan_model.dart';
@@ -40,6 +40,20 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
   bool _isBlocking = false;
   bool _isBlocked = false;
   UrlScanModel? _scanResult;
+
+  Timer? _scanLogTimer;
+  int _currentLogIndex = 0;
+
+  final List<String> _scanLogs = [
+    'Connecting to VirusTotal secure gateways...',
+    'Analyzing URL domain reputation...',
+    'Checking Google Safe Browsing blacklist...',
+    'Querying Kaspersky malware databases...',
+    'Scanning DNS and SSL certificates...',
+    'Parsing Heuristic analysis engines...',
+    'Compiling security community flags...',
+    'Finalizing threat score calculation...',
+  ];
 
   // Animation controllers
   late AnimationController _resultAnimController;
@@ -107,6 +121,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
 
   @override
   void dispose() {
+    _scanLogTimer?.cancel();
     _urlController.dispose();
     _resultAnimController.dispose();
     _pulseController.dispose();
@@ -123,11 +138,25 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
       return;
     }
 
-    final userId = SupabaseConfig.client.auth.currentUser?.id;
+    final userId = ref.read(userProvider)?.userId;
     if (userId == null) {
       _showSnackBar('Please log in to scan URLs', isError: true);
       return;
     }
+
+    _currentLogIndex = 0;
+    _scanLogTimer?.cancel();
+    _scanLogTimer = Timer.periodic(const Duration(milliseconds: 600), (timer) {
+      if (mounted && _isScanning) {
+        setState(() {
+          if (_currentLogIndex < _scanLogs.length - 1) {
+            _currentLogIndex++;
+          }
+        });
+      } else {
+        timer.cancel();
+      }
+    });
 
     setState(() {
       _isScanning = true;
@@ -141,6 +170,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
       final limitService = ref.read(scanLimitServiceProvider);
       final canScan = await limitService.canUserScan(userId);
       if (!canScan) {
+        _scanLogTimer?.cancel();
         if (!mounted) return;
         setState(() => _isScanning = false);
         showDialog(
@@ -158,7 +188,11 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
 
       await ref.read(userProvider.notifier).refreshUser();
       ref.invalidate(scanLimitProvider);
+      ref.invalidate(scanHistoryProvider);
+      ref.invalidate(recentScansProvider);
+      ref.invalidate(dangerousScansProvider);
 
+      _scanLogTimer?.cancel();
       if (!mounted) return;
 
       setState(() {
@@ -169,6 +203,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
       _resultAnimController.forward();
       _riskGaugeController.forward();
     } catch (e) {
+      _scanLogTimer?.cancel();
       if (!mounted) return;
       setState(() => _isScanning = false);
       final errMsg = e.toString();
@@ -187,7 +222,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
 
   Future<void> _blockUrl() async {
     if (_scanResult == null) return;
-    final userId = SupabaseConfig.client.auth.currentUser?.id;
+    final userId = ref.read(userProvider)?.userId;
     if (userId == null) {
       AlertService.showWarning(
         context,
@@ -205,6 +240,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
         reason: _scanResult!.threatType ?? 'dangerous',
       );
       await ref.read(userProvider.notifier).refreshUser();
+      ref.invalidate(blockedUrlsProvider);
+      ref.invalidate(dangerousScansProvider);
       if (!mounted) return;
       setState(() {
         _isBlocking = false;
@@ -324,43 +361,68 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(tabIndexProvider, (previous, next) {
+      if (next != 1) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _resetScan();
+        });
+      }
+    });
+
     return Scaffold(
       backgroundColor: _bgColor,
-      body: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(20, 60, 20, 40),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildTitleSection(),
-            SizedBox(height: 28),
-            _buildUrlInput(),
-            SizedBox(height: 20),
-            _buildScanButton(),
-            SizedBox(height: 28),
-            AnimatedSwitcher(
-              duration: Duration(milliseconds: 500),
-              switchInCurve: Curves.easeOutCubic,
-              switchOutCurve: Curves.easeIn,
-              transitionBuilder: (child, animation) {
-                return FadeTransition(
-                  opacity: animation,
-                  child: SlideTransition(
-                    position: Tween<Offset>(
-                      begin: Offset(0, 0.15),
-                      end: Offset.zero,
-                    ).animate(animation),
-                    child: child,
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: AnimatedBuilder(
+              animation: _pulseController,
+              builder: (context, _) {
+                return CustomPaint(
+                  painter: _CyberGridPainter(
+                    color: _primaryGreen,
+                    pulse: _pulseController.value,
                   ),
                 );
               },
-              child: _isScanning
-                  ? _buildScanningIndicator()
-                  : _hasResult && _scanResult != null
-                      ? _buildResultSection()
-                      : _buildIdleState(),
             ),
-          ],
-        ),
+          ),
+          SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 60, 20, 40),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildTitleSection(),
+                const SizedBox(height: 28),
+                _buildUrlInput(),
+                const SizedBox(height: 20),
+                _buildScanButton(),
+                const SizedBox(height: 28),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 500),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeIn,
+                  transitionBuilder: (child, animation) {
+                    return FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(
+                        position: Tween<Offset>(
+                          begin: const Offset(0, 0.15),
+                          end: Offset.zero,
+                        ).animate(animation),
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: _isScanning
+                      ? _buildScanningIndicator()
+                      : _hasResult && _scanResult != null
+                          ? _buildResultSection()
+                          : _buildIdleState(),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -730,15 +792,31 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                 fontWeight: FontWeight.w700,
               ),
             ),
-            SizedBox(height: 8),
-            Text(
-              'Checking against 70+ threat databases',
-              style: TextStyle(
-                color: _textMuted,
-                fontSize: 13,
+            SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: _primaryGreen.withValues(alpha: 0.15),
+                ),
+              ),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                child: Text(
+                  _scanLogs[_currentLogIndex],
+                  key: ValueKey(_currentLogIndex),
+                  style: TextStyle(
+                    color: _primaryGreen.withValues(alpha: 0.85),
+                    fontSize: 12,
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ),
             ),
-            SizedBox(height: 16),
+            SizedBox(height: 20),
             // Animated dots
             SizedBox(
               width: 40,
@@ -1565,4 +1643,45 @@ class _RadarSweepPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+// ──────────────────────────── Cyber Grid Background Painter ────────────────────────────
+
+class _CyberGridPainter extends CustomPainter {
+  final Color color;
+  final double pulse;
+
+  _CyberGridPainter({required this.color, required this.pulse});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color.withValues(alpha: 0.03)
+      ..strokeWidth = 1.0;
+
+    // Draw vertical grid lines
+    const double gridSpacing = 32.0;
+    for (double x = 0; x < size.width; x += gridSpacing) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    }
+
+    // Draw horizontal grid lines
+    for (double y = 0; y < size.height; y += gridSpacing) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+
+    // Draw a subtle tech grid circle target in center
+    final center = Offset(size.width / 2, size.height / 3.2);
+    final circlePaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..color = color.withValues(alpha: 0.015 + (pulse * 0.025))
+      ..strokeWidth = 1.0;
+
+    canvas.drawCircle(center, 120 + (pulse * 20), circlePaint);
+    canvas.drawCircle(center, 240 + (pulse * 40), circlePaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _CyberGridPainter oldDelegate) =>
+      oldDelegate.pulse != pulse;
 }

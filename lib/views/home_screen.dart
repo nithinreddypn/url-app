@@ -5,13 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../services/supabase_config.dart';
 import '../services/url_scan_service.dart';
 import '../models/url_scan_model.dart';
 import '../models/user_model.dart';
 import '../models/plan_model.dart';
 import '../providers/app_providers.dart';
 import '../theme/app_theme.dart';
+import 'premium_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   final VoidCallback? onNavigateToScan;
@@ -75,7 +75,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
     if (user != null && user.username.trim().isNotEmpty) {
       return user.username.trim().split(' ').first;
     }
-    final email = user?.email ?? SupabaseConfig.client.auth.currentUser?.email ?? '';
+    final email = user?.email ?? ref.read(userProvider)?.email ?? '';
     if (email.isNotEmpty) {
       final emailName = email.split('@').first;
       if (emailName.isNotEmpty) {
@@ -91,7 +91,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
     if (firstName.isNotEmpty && firstName != 'Defender') {
       return firstName[0].toUpperCase();
     }
-    final email = user?.email ?? SupabaseConfig.client.auth.currentUser?.email ?? '';
+    final email = user?.email ?? ref.read(userProvider)?.email ?? '';
     if (email.isNotEmpty) {
       return email[0].toUpperCase();
     }
@@ -105,7 +105,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
   Future<void> _loadDashboardData() async {
     setState(() => _isLoading = true);
     try {
-      final userId = SupabaseConfig.client.auth.currentUser?.id;
+      final userId = ref.read(userProvider)?.userId;
 
       final recentScans = userId != null
           ? await _scanService.getRecentScans(userId: userId, limit: 5)
@@ -139,12 +139,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(recentScansProvider).whenData((scans) {
+      _recentScans = scans;
+    });
+
     return Scaffold(
       backgroundColor: _bgColor,
       body: RefreshIndicator(
         color: _primaryGreen,
         backgroundColor: _cardColor,
-        onRefresh: _loadDashboardData,
+        onRefresh: () async {
+          ref.invalidate(recentScansProvider);
+          await _loadDashboardData();
+        },
         child: _isLoading ? _buildLoadingState() : _buildContent(),
       ),
     );
@@ -285,10 +292,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
       _NavItem('Settings', 'App preferences & profile', Icons.settings_rounded, const Color(0xFF8B5CF6), () {
         Navigator.pop(ctx);
         widget.onNavigateToSettings?.call();
-      }),
-      _NavItem('Premium', 'Upgrade for unlimited scans', Icons.workspace_premium_rounded, const Color(0xFFFFD700), () {
-        Navigator.pop(ctx);
-        ctx.push('/premium');
       }),
     ];
 
@@ -557,16 +560,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                 iconBg: _red.withValues(alpha: 0.12),
                 iconColor: _red,
                 onTap: () => context.push('/blocked_list'),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _QuickToolCard(
-                title: 'Premium Upgrade',
-                icon: Icons.star_rounded,
-                iconBg: const Color(0xFFFBBF24).withValues(alpha: 0.12),
-                iconColor: const Color(0xFFF59E0B),
-                onTap: () => context.push('/premium'),
               ),
             ),
           ],
@@ -1056,6 +1049,50 @@ class _NotificationButtonState extends State<_NotificationButton> {
   }
 }
 
+enum PlanTier { free, pro, enterprise }
+
+class PlanTierConfig {
+  final Widget badgeChild;
+  final Color glowColor;
+  final String pillLabel;
+
+  const PlanTierConfig({
+    required this.badgeChild,
+    required this.glowColor,
+    required this.pillLabel,
+  });
+}
+
+const planTierConfigs = {
+  PlanTier.free: PlanTierConfig(
+    badgeChild: Icon(
+      Icons.workspace_premium_rounded,
+      size: 40,
+      color: Color(0xFFCD7F32), // Bronze/Brown color for free tier
+    ),
+    glowColor: Color(0xFFCD7F32), // Bronze/Brown glow
+    pillLabel: 'FREE',
+  ),
+  PlanTier.pro: PlanTierConfig(
+    badgeChild: Icon(
+      Icons.workspace_premium_rounded,
+      size: 40,
+      color: Color(0xFFFACC15),
+    ),
+    glowColor: Color(0xFFFACC15), // Gold color matching warning token (#FACC15)
+    pillLabel: 'PRO',
+  ),
+  PlanTier.enterprise: PlanTierConfig(
+    badgeChild: Icon(
+      Icons.workspace_premium_rounded,
+      size: 40,
+      color: Color(0xFF60A5FA),
+    ),
+    glowColor: Color(0xFF60A5FA), // Blue accent glow
+    pillLabel: 'ENTERPRISE',
+  ),
+};
+
 class SubscriptionDashboardCard extends ConsumerStatefulWidget {
   const SubscriptionDashboardCard({super.key});
 
@@ -1066,6 +1103,8 @@ class SubscriptionDashboardCard extends ConsumerStatefulWidget {
 class _SubscriptionDashboardCardState extends ConsumerState<SubscriptionDashboardCard> {
   Timer? _timer;
   bool _isDowngrading = false;
+  ScrollPosition? _scrollPosition;
+  double _parallaxOffset = 0.0;
 
   @override
   void initState() {
@@ -1076,13 +1115,48 @@ class _SubscriptionDashboardCardState extends ConsumerState<SubscriptionDashboar
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkSubscriptionStatus();
+      _setupScrollListener();
     });
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _cleanupScrollListener();
     super.dispose();
+  }
+
+  void _setupScrollListener() {
+    if (!mounted) return;
+    try {
+      _scrollPosition = Scrollable.of(context).position;
+      _scrollPosition?.addListener(_onScroll);
+    } catch (_) {}
+  }
+
+  void _cleanupScrollListener() {
+    _scrollPosition?.removeListener(_onScroll);
+    _scrollPosition = null;
+  }
+
+  void _onScroll() {
+    if (!mounted) return;
+    final mediaQuery = MediaQuery.of(context);
+    if (mediaQuery.disableAnimations) {
+      if (_parallaxOffset != 0.0) {
+        setState(() {
+          _parallaxOffset = 0.0;
+        });
+      }
+      return;
+    }
+    final pixels = _scrollPosition?.pixels ?? 0.0;
+    final newOffset = (pixels * -0.05).clamp(-12.0, 12.0);
+    if (newOffset != _parallaxOffset) {
+      setState(() {
+        _parallaxOffset = newOffset;
+      });
+    }
   }
 
   void _checkSubscriptionStatus() {
@@ -1106,12 +1180,6 @@ class _SubscriptionDashboardCardState extends ConsumerState<SubscriptionDashboar
     try {
       final userService = ref.read(userServiceProvider);
       await userService.updateUser(userId, {'is_premium': false});
-      await SupabaseConfig.client
-          .from('subscriptions')
-          .update({'status': 'expired'})
-          .eq('user_id', userId)
-          .eq('status', 'active');
-      await ref.read(userProvider.notifier).refreshUser();
       ref.invalidate(subscriptionProvider);
       ref.invalidate(scanLimitProvider);
       if (mounted) {
@@ -1141,14 +1209,9 @@ class _SubscriptionDashboardCardState extends ConsumerState<SubscriptionDashboar
 
     final user = ref.watch(userProvider);
     final subscriptionAsync = ref.watch(subscriptionProvider);
-    final scanLimitAsync = ref.watch(scanLimitProvider);
-    // Weekly scan limit is hardcoded to 1 (no longer fetched from settings)
     final plansAsync = ref.watch(planProvider);
 
     final isPremium = user?.isPremium ?? false;
-    final remainingScans = scanLimitAsync.valueOrNull ?? 0;
-    final lifetimeScans = user?.lifetimeScanCount ?? 0;
-    final isInitialPhase = lifetimeScans < 15;
 
     if (user != null && isPremium) {
       subscriptionAsync.whenData((subscription) {
@@ -1162,6 +1225,8 @@ class _SubscriptionDashboardCardState extends ConsumerState<SubscriptionDashboar
     String planName = isPremium ? 'PLUS' : 'FREE PLAN';
     String planTier = 'free'; // 'free', 'monthly', 'yearly'
     final subscription = subscriptionAsync.valueOrNull;
+    PlanTier currentTier = PlanTier.free;
+
     if (isPremium && subscription != null) {
       final plans = plansAsync.valueOrNull ?? [];
       final activePlan = plans.firstWhere(
@@ -1169,13 +1234,19 @@ class _SubscriptionDashboardCardState extends ConsumerState<SubscriptionDashboar
         orElse: () => PlanModel(planId: '', name: 'PLUS', durationMonths: 0, price: 0),
       );
       planName = activePlan.name.toUpperCase();
-      // Determine tier based on plan name
       if (activePlan.name.toLowerCase().contains('year')) {
         planTier = 'yearly';
+        currentTier = PlanTier.pro;
+      } else if (activePlan.name.toLowerCase().contains('enterprise') || activePlan.name.toLowerCase().contains('business')) {
+        planTier = 'enterprise';
+        currentTier = PlanTier.enterprise;
       } else {
         planTier = 'monthly';
+        currentTier = PlanTier.pro;
       }
     }
+
+    final config = planTierConfigs[currentTier]!;
 
     String daysStr = '00';
     String hoursStr = '00';
@@ -1196,310 +1267,335 @@ class _SubscriptionDashboardCardState extends ConsumerState<SubscriptionDashboar
         minutesStr = minutes.toString().padLeft(2, '0');
         secondsStr = seconds.toString().padLeft(2, '0');
 
-        // Only show expiry warning when within 2 days
         showExpiryWarning = difference.inDays <= 2;
       }
     }
 
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(30),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.35),
-            blurRadius: 28,
-            offset: const Offset(0, 12),
-          ),
-          if (isPremium)
-            BoxShadow(
-              color: const Color(0xFF1A7A3A).withValues(alpha: 0.16),
-              blurRadius: 36,
-              spreadRadius: 2,
-              offset: const Offset(0, 4),
-            ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(30),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+    final remainingScans = ref.watch(scanLimitProvider).valueOrNull ?? 50;
+    final usedScans = (50 - remainingScans).clamp(0, 50);
+    final totalScans = 50;
+
+    final isDarkTheme = context.isDark;
+    final tintColor = isDarkTheme 
+        ? const Color(0xFF1E241E).withValues(alpha: 0.16)
+        : const Color(0xFF0F172A).withValues(alpha: 0.10);
+
+    final noiseColor = isDarkTheme 
+        ? Colors.white.withValues(alpha: 0.05) 
+        : Colors.black.withValues(alpha: 0.04);
+
+        final borderColorStart = const Color(0xFF5CED73);
+    final borderColorEnd = const Color(0xFF8B4513); // Warm brown sampled from logo
+
+    final double percent = (usedScans / totalScans).clamp(0.0, 1.0);
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        // 1. Soft blurred radial gradient background behind the card at low opacity (~15%) peeking from top-left corner
+        Positioned(
+          left: -70,
+          top: -70,
+          width: 300,
+          height: 300,
           child: Container(
-            width: double.infinity,
             decoration: BoxDecoration(
-              color: const Color(0xFF141614).withValues(alpha: 0.78),
-              borderRadius: BorderRadius.circular(30),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.08),
-                width: 1.2,
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [
+                  const Color(0xFF5CED73).withOpacity(0.15),
+                  Colors.transparent,
+                ],
               ),
             ),
-            padding: const EdgeInsets.all(22),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+          ),
+        ),
+
+        // 2. The card container
+        Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(30),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(isDarkTheme ? 0.35 : 0.12),
+                blurRadius: 28,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
+          child: ClipPath(
+            clipper: SquircleClipper(radius: 30),
+            child: Stack(
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      flex: 6,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                // 3. Frosted tint, border gradient, grain noise overlay CustomPaint
+                Positioned.fill(
+                  child: CustomPaint(
+                    painter: GlassCardPainter(
+                      tintColor: const Color(0xFF141614), // Dark card base color
+                      noiseColor: Colors.white.withOpacity(0.02),
+                      borderColorStart: borderColorStart,
+                      borderColorEnd: const Color(0xFFFFD700), // Gold/Yellow end color matching screenshot
+                      borderWidth: 1.5,
+                      radius: 30,
+                    ),
+                  ),
+                ),
+
+                // 4. Foreground Content
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Upper Row: Content on Left, Badge on Right
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF1A7A3A).withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: const Color(0xFF1A7A3A).withValues(alpha: 0.7),
-                                width: 1.2,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: const Color(0xFF1A7A3A).withValues(alpha: 0.12),
-                                  blurRadius: 8,
-                                  spreadRadius: 1,
-                                ),
-                              ],
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
+                          // Left column (texts)
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Icon(
-                                  Icons.shield_outlined,
-                                  size: 13,
-                                  color: Color(0xFF5CED73),
-                                ),
-                                SizedBox(width: 6),
-                                Text(
-                                  'SHIELD ACTIVE',
-                                  style: TextStyle(
-                                    color: Color(0xFF5CED73),
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 1.0,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 18),
-                          const Text(
-                            'URL DEFENDER',
-                            style: TextStyle(
-                              color: Colors.white38,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 1.2,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Row(
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  planName,
-                                  style: TextStyle(
-                                    color: isPremium ? const Color(0xFF5CED73) : Colors.white,
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: -0.5,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              if (isPremium) ...[
-                                const SizedBox(width: 10),
+                                // Top-left status pill
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF1A7A3A).withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(10),
+                                    color: const Color(0xFF1A7A3A).withOpacity(0.06),
+                                    borderRadius: BorderRadius.circular(20),
                                     border: Border.all(
-                                      color: const Color(0xFF5CED73).withValues(alpha: 0.5),
-                                      width: 1,
+                                      color: const Color(0xFF1A7A3A).withOpacity(0.5),
+                                      width: 1.0,
                                     ),
                                   ),
                                   child: const Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Text(
-                                        '👑',
-                                        style: TextStyle(fontSize: 10),
+                                      Icon(
+                                        Icons.shield_outlined,
+                                        size: 13,
+                                        color: Color(0xFF5CED73),
                                       ),
-                                      SizedBox(width: 4),
+                                      SizedBox(width: 6),
                                       Text(
-                                        'PREMIUM',
+                                        'SHIELD ACTIVE',
                                         style: TextStyle(
                                           color: Color(0xFF5CED73),
-                                          fontSize: 9,
+                                          fontSize: 10,
                                           fontWeight: FontWeight.w800,
-                                          letterSpacing: 0.5,
+                                          letterSpacing: 1.0,
                                         ),
                                       ),
                                     ],
                                   ),
+                                ),
+                                const SizedBox(height: 18),
+                                const Text(
+                                  'URL DEFENDER',
+                                  style: TextStyle(
+                                    color: Colors.white38,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 1.2,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  isPremium ? planName.toUpperCase() : 'FREE PLAN',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 32,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: -0.5,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ],
-                            ],
+                            ),
                           ),
-                          const SizedBox(height: 22),
-                          Row(
+                          const SizedBox(width: 16),
+                          // Right column (badge)
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               Container(
-                                width: 42,
-                                height: 42,
+                                width: 84,
+                                height: 84,
+                                alignment: Alignment.center,
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
-                                  color: Colors.white.withValues(alpha: 0.04),
+                                  color: const Color(0xFF141614), // Dark circle background matching card
                                   border: Border.all(
-                                    color: const Color(0xFF1A7A3A).withValues(alpha: 0.25),
-                                    width: 1.2,
+                                    color: config.glowColor.withOpacity(0.35),
+                                    width: 1.5,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: config.glowColor.withOpacity(0.12),
+                                      blurRadius: 10,
+                                      spreadRadius: 1,
+                                    ),
+                                  ],
+                                ),
+                                child: config.badgeChild,
+                              ),
+                              const SizedBox(height: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: config.glowColor.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: config.glowColor.withOpacity(0.4),
+                                    width: 1.0,
                                   ),
                                 ),
-                                child: Icon(
-                                  isPremium ? Icons.all_inclusive_rounded : Icons.donut_large_rounded,
-                                  color: const Color(0xFF5CED73),
-                                  size: 20,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Remaining Scans',
-                                      style: TextStyle(
-                                        color: Colors.white.withValues(alpha: 0.45),
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    AnimatedSwitcher(
-                                      duration: const Duration(milliseconds: 300),
-                                      transitionBuilder: (child, animation) {
-                                        return FadeTransition(
-                                          opacity: animation,
-                                          child: SlideTransition(
-                                            position: Tween<Offset>(
-                                              begin: const Offset(0.0, 0.25),
-                                              end: Offset.zero,
-                                            ).animate(animation),
-                                            child: child,
-                                          ),
-                                        );
-                                      },
-                                      child: Text(
-                                        isPremium
-                                            ? '∞ Unlimited'
-                                            : (isInitialPhase
-                                                ? '$remainingScans / 15 remaining'
-                                                : '$remainingScans / 1 weekly'),
-                                        key: ValueKey<String>(isPremium
-                                            ? 'unlim'
-                                            : (isInitialPhase
-                                                ? '$remainingScans-initial'
-                                                : '$remainingScans-weekly')),
-                                        style: TextStyle(
-                                          color: isPremium ? const Color(0xFF5CED73) : Colors.white,
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                    ),
-                                    if (!isPremium && isInitialPhase) ...[
-                                      const SizedBox(height: 8),
-                                      ClipRRect(
-                                        borderRadius: BorderRadius.circular(2),
-                                        child: SizedBox(
-                                          width: 100,
-                                          child: LinearProgressIndicator(
-                                            value: (remainingScans / 15.0).clamp(0.0, 1.0),
-                                            backgroundColor: Colors.white.withValues(alpha: 0.1),
-                                            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF5CED73)),
-                                            minHeight: 4,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ],
+                                child: Text(
+                                  config.pillLabel,
+                                  style: TextStyle(
+                                    color: config.glowColor,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 0.5,
+                                  ),
                                 ),
                               ),
                             ],
                           ),
-                          if (isPremium && showExpiryWarning) ...[
-                            const SizedBox(height: 18),
-                            Container(
-                              height: 1,
-                              width: double.infinity,
-                              color: Colors.white.withValues(alpha: 0.08),
-                            ),
-                            const SizedBox(height: 16),
+                        ],
+                      ),
+
+                      // Usage indicator block (Full Width outside Row)
+                      if (!isPremium) ...[
+                        const SizedBox(height: 24),
+                        Container(
+                          height: 3,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(1.5),
+                          ),
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              final fillWidth = constraints.maxWidth * percent;
+                              return Align(
+                                alignment: Alignment.centerLeft,
+                                child: Container(
+                                  height: 3,
+                                  width: fillWidth,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF5CED73),
+                                    borderRadius: BorderRadius.circular(1.5),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: const Color(0xFF5CED73).withOpacity(0.4),
+                                        blurRadius: 6,
+                                        spreadRadius: 1,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
                             Text(
-                              'Subscription Expires In',
+                              '$usedScans of $totalScans scans used',
                               style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.45),
-                                fontSize: 11,
+                                color: Colors.white.withOpacity(0.45),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            InkWell(
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => const PremiumScreen()),
+                                );
+                              },
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'Upgrade',
+                                    style: TextStyle(
+                                      color: isDarkTheme ? const Color(0xFF60A5FA) : const Color(0xFF1D4ED8),
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Icon(
+                                    Icons.arrow_forward_rounded,
+                                    color: isDarkTheme ? const Color(0xFF60A5FA) : const Color(0xFF1D4ED8),
+                                    size: 13,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ] else ...[
+                        const SizedBox(height: 16),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              '$usedScans scans used this month',
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.45),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const Text(
+                              'Unlimited Scans Active',
+                              style: TextStyle(
+                                color: Color(0xFF5CED73),
+                                fontSize: 12,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
-                            const SizedBox(height: 8),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _buildCountdownCard(daysStr, 'Days'),
-                                _buildColonSeparator(),
-                                _buildCountdownCard(hoursStr, 'Hours'),
-                                _buildColonSeparator(),
-                                _buildCountdownCard(minutesStr, 'Minutes'),
-                                _buildColonSeparator(),
-                                _buildCountdownCard(secondsStr, 'Seconds'),
-                              ],
+                          ],
+                        ),
+                      ],
+
+                      const SizedBox(height: 20),
+
+                      // Feature Row Container
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.02),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.04),
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            Expanded(
+                              child: _buildFeatureItem(Icons.shield_outlined, 'Unlimited\nProtection'),
                             ),
-                            const SizedBox(height: 20),
-                            _RenewButton(
-                              onTap: () {
-                                context.push('/premium');
-                              },
+                            _buildVerticalDivider(),
+                            Expanded(
+                              child: _buildFeatureItem(Icons.bolt_rounded, 'Real-time\nScanning'),
+                            ),
+                            _buildVerticalDivider(),
+                            Expanded(
+                              child: _buildFeatureItem(Icons.lock_outline_rounded, 'Advanced\nSecurity'),
                             ),
                           ],
-                        ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      flex: 4,
-                      child: Column(
-                        children: [
-                          const SizedBox(height: 24),
-                          DynamicSubscriptionArtwork(planTier: planTier),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.03),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.06),
-                      width: 1,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _buildFeatureItem(Icons.gpp_good_rounded, 'Unlimited\nProtection'),
-                      _buildVerticalDivider(),
-                      _buildFeatureItem(Icons.bolt_rounded, 'Real-time\nScanning'),
-                      _buildVerticalDivider(),
-                      _buildFeatureItem(Icons.lock_rounded, 'Advanced\nSecurity'),
                     ],
                   ),
                 ),
@@ -1507,7 +1603,7 @@ class _SubscriptionDashboardCardState extends ConsumerState<SubscriptionDashboar
             ),
           ),
         ),
-      ),
+      ],
     );
   }
 
@@ -1585,17 +1681,20 @@ class _SubscriptionDashboardCardState extends ConsumerState<SubscriptionDashboar
 
   Widget _buildFeatureItem(IconData icon, String title) {
     return Row(
-      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(icon, size: 15, color: const Color(0xFF5CED73)),
-        const SizedBox(width: 7),
-        Text(
-          title,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 9.5,
-            fontWeight: FontWeight.w600,
-            height: 1.25,
+        Icon(icon, size: 18, color: const Color(0xFF5CED73).withValues(alpha: 0.8)),
+        const SizedBox(width: 10),
+        Flexible(
+          child: Text(
+            title,
+            textAlign: TextAlign.left,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10.5,
+              fontWeight: FontWeight.w600,
+              height: 1.25,
+            ),
           ),
         ),
       ],
@@ -1818,7 +1917,7 @@ class _DynamicSubscriptionArtworkState extends State<DynamicSubscriptionArtwork>
                   Positioned(
                     top: 22,
                     child: Icon(
-                      Icons.workspace_premium_rounded,
+                      Icons.security_rounded,
                       size: 40,
                       color: widget.tierColor,
                       shadows: [
@@ -1829,36 +1928,6 @@ class _DynamicSubscriptionArtworkState extends State<DynamicSubscriptionArtwork>
                       ],
                     ),
                   ),
-                  if (widget.isPremium) ...[
-                    Positioned(
-                      top: -18,
-                      child: Transform.rotate(
-                        angle: 0.05,
-                        child: AnimatedBuilder(
-                          animation: _floatingController,
-                          builder: (context, child) {
-                            final crownOffset = math.sin(_floatingController.value * math.pi) * 2;
-                            return Transform.translate(
-                              offset: Offset(0, crownOffset),
-                              child: child,
-                            );
-                          },
-                          child: Text(
-                            '👑',
-                            style: TextStyle(
-                              fontSize: 28,
-                              shadows: [
-                                Shadow(
-                                  color: widget.tierGlowColor,
-                                  blurRadius: 12,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
                   if (!widget.isPremium) ...[
                     Positioned(
                       bottom: -4,
@@ -2218,4 +2287,484 @@ class _AnimatedSearchBarState extends State<_AnimatedSearchBar> with SingleTicke
       ),
     );
   }
+}
+
+class SquircleClipper extends CustomClipper<Path> {
+  final double radius;
+  SquircleClipper({this.radius = 28.0});
+
+  @override
+  Path getClip(Size size) {
+    final rect = Rect.fromLTWH(0, 0, size.width, size.height);
+    final path = Path();
+    final r = radius.clamp(0.0, size.shortestSide / 2);
+    final double offset = r * 1.4;
+    final double ctrl = r * 0.45;
+
+    path.moveTo(offset, 0);
+    path.lineTo(size.width - offset, 0);
+    path.cubicTo(size.width - ctrl, 0, size.width, ctrl, size.width, offset);
+    path.lineTo(size.width, size.height - offset);
+    path.cubicTo(size.width, size.height - ctrl, size.width - ctrl, size.height, size.width - offset, size.height);
+    path.lineTo(offset, size.height);
+    path.cubicTo(ctrl, size.height, 0, size.height - ctrl, 0, size.height - offset);
+    path.lineTo(0, offset);
+    path.cubicTo(0, ctrl, ctrl, 0, offset, 0);
+    path.close();
+    return path;
+  }
+
+  @override
+  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
+}
+
+class GlassCardPainter extends CustomPainter {
+  final Color tintColor;
+  final Color noiseColor;
+  final Color borderColorStart;
+  final Color borderColorEnd;
+  final double borderWidth;
+  final double radius;
+
+  GlassCardPainter({
+    required this.tintColor,
+    required this.noiseColor,
+    required this.borderColorStart,
+    required this.borderColorEnd,
+    this.borderWidth = 1.6,
+    this.radius = 28.0,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Rect.fromLTWH(0, 0, size.width, size.height);
+    
+    final path = Path();
+    final r = radius.clamp(0.0, size.shortestSide / 2);
+    final double offset = r * 1.4;
+    final double ctrl = r * 0.45;
+
+    path.moveTo(offset, 0);
+    path.lineTo(size.width - offset, 0);
+    path.cubicTo(size.width - ctrl, 0, size.width, ctrl, size.width, offset);
+    path.lineTo(size.width, size.height - offset);
+    path.cubicTo(size.width, size.height - ctrl, size.width - ctrl, size.height, size.width - offset, size.height);
+    path.lineTo(offset, size.height);
+    path.cubicTo(ctrl, size.height, 0, size.height - ctrl, 0, size.height - offset);
+    path.lineTo(0, offset);
+    path.cubicTo(0, ctrl, ctrl, 0, offset, 0);
+    path.close();
+
+    final fillPaint = Paint()
+      ..color = tintColor
+      ..style = PaintingStyle.fill;
+    canvas.drawPath(path, fillPaint);
+
+    canvas.save();
+    canvas.clipPath(path);
+
+    final noisePaint = Paint()
+      ..color = noiseColor
+      ..strokeWidth = 1.0;
+    
+    final points = <Offset>[];
+    double x = 17.0;
+    double y = 29.0;
+    for (int i = 0; i < 900; i++) {
+      x = (x * 131.71 + 83.19) % size.width;
+      y = (y * 953.27 + 29.83) % size.height;
+      points.add(Offset(x, y));
+    }
+    canvas.drawPoints(PointMode.points, points, noisePaint);
+    canvas.restore();
+
+    final borderPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = borderWidth;
+
+    borderPaint.shader = LinearGradient(
+      begin: Alignment.bottomLeft,
+      end: Alignment.topRight,
+      colors: [borderColorStart, borderColorEnd],
+    ).createShader(rect);
+
+    canvas.drawPath(path, borderPaint);
+
+    final rimPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = borderWidth * 1.2;
+    
+    rimPaint.shader = LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        Colors.white.withValues(alpha: 0.16),
+        Colors.white.withValues(alpha: 0.04),
+        Colors.transparent,
+      ],
+      stops: const [0.0, 0.4, 1.0],
+    ).createShader(rect);
+
+    canvas.drawPath(path, rimPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant GlassCardPainter oldDelegate) {
+    return oldDelegate.tintColor != tintColor ||
+        oldDelegate.noiseColor != noiseColor ||
+        oldDelegate.borderColorStart != borderColorStart ||
+        oldDelegate.borderColorEnd != borderColorEnd;
+  }
+}
+
+class GlowingPulseLine extends StatefulWidget {
+  final int used;
+  final int total;
+  const GlowingPulseLine({super.key, required this.used, required this.total});
+
+  @override
+  State<GlowingPulseLine> createState() => _GlowingPulseLineState();
+}
+
+class _GlowingPulseLineState extends State<GlowingPulseLine> with TickerProviderStateMixin {
+  late AnimationController _pulseController;
+  late AnimationController _idleController;
+  int _lastUsed = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _lastUsed = widget.used;
+
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
+
+    _idleController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2500),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void didUpdateWidget(covariant GlowingPulseLine oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.used != oldWidget.used) {
+      final mediaQuery = MediaQuery.of(context);
+      if (!mediaQuery.disableAnimations) {
+        _pulseController.forward(from: 0.0);
+      }
+      _lastUsed = widget.used;
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    _idleController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final double fillPercentage = (widget.total > 0) ? (widget.used / widget.total).clamp(0.0, 1.0) : 0.0;
+    final greenColor = const Color(0xFF5CED73);
+
+    return AnimatedBuilder(
+      animation: Listenable.merge([_pulseController, _idleController]),
+      builder: (context, child) {
+        double pulseVal = 0.0;
+        if (_pulseController.isAnimating) {
+          double t = _pulseController.value;
+          pulseVal = 0.15 * math.sin(t * math.pi);
+        }
+        
+        double idleVal = _idleController.value;
+        double glowScale = 1.0 + pulseVal;
+        double glowOpacity = 0.3 + (idleVal * 0.15) + (pulseVal * 0.4);
+
+        final mediaQuery = MediaQuery.of(context);
+        if (mediaQuery.disableAnimations) {
+          glowScale = 1.0;
+          glowOpacity = 0.4;
+        }
+
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final totalWidth = constraints.maxWidth;
+            final fillWidth = totalWidth * fillPercentage;
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Stack(
+                  clipBehavior: Clip.none,
+                  alignment: Alignment.centerLeft,
+                  children: [
+                    Container(
+                      height: 3,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(1.5),
+                      ),
+                    ),
+                    Container(
+                      height: 3,
+                      width: fillWidth,
+                      decoration: BoxDecoration(
+                        color: greenColor,
+                        borderRadius: BorderRadius.circular(1.5),
+                        boxShadow: [
+                          BoxShadow(
+                            color: greenColor.withValues(alpha: glowOpacity),
+                            blurRadius: 6.0 * glowScale,
+                            spreadRadius: 1.0 * glowScale,
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (fillPercentage > 0.0)
+                      Positioned(
+                        left: (fillWidth - 4).clamp(0.0, totalWidth - 8),
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: greenColor,
+                                blurRadius: 8.0 * glowScale,
+                                spreadRadius: 2.0 * glowScale,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                RichText(
+                  text: TextSpan(
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.4),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    children: [
+                      TextSpan(
+                        text: '${widget.used} ',
+                        style: TextStyle(
+                          color: greenColor,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const TextSpan(text: 'of '),
+                      TextSpan(
+                        text: '${widget.total} ',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const TextSpan(text: 'scans used'),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class CheckeredShield extends StatelessWidget {
+  final double width;
+  final double height;
+  const CheckeredShield({super.key, this.width = 24, this.height = 28});
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: Size(width, height),
+      painter: _CheckeredShieldPainter(),
+    );
+  }
+}
+
+class _CheckeredShieldPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    
+    final lightGold = const Color(0xFFD4AF37);
+    final darkGold = const Color(0xFF8C6D23);
+    
+    final path = Path();
+    final cx = w / 2;
+    
+    path.moveTo(cx, 0);
+    path.quadraticBezierTo(w * 0.15, h * 0.05, 0, h * 0.15);
+    path.quadraticBezierTo(w * 0.05, h * 0.6, cx, h);
+    path.quadraticBezierTo(w * 0.95, h * 0.6, w, h * 0.15);
+    path.quadraticBezierTo(w * 0.85, h * 0.05, cx, 0);
+    path.close();
+
+    canvas.save();
+    canvas.clipPath(path);
+
+    final paint = Paint()..style = PaintingStyle.fill;
+    final cxVal = w / 2;
+    final cyVal = h * 0.45;
+
+    // Top-Left
+    paint.color = darkGold;
+    final tlPath = Path()
+      ..moveTo(cxVal, 0)
+      ..lineTo(cxVal, cyVal)
+      ..lineTo(0, cyVal)
+      ..lineTo(0, h * 0.15)
+      ..quadraticBezierTo(w * 0.15, h * 0.05, cxVal, 0)
+      ..close();
+    canvas.drawPath(tlPath, paint);
+
+    // Top-Right
+    paint.color = lightGold;
+    final trPath = Path()
+      ..moveTo(cxVal, 0)
+      ..lineTo(cxVal, cyVal)
+      ..lineTo(w, cyVal)
+      ..lineTo(w, h * 0.15)
+      ..quadraticBezierTo(w * 0.85, h * 0.05, cxVal, 0)
+      ..close();
+    canvas.drawPath(trPath, paint);
+
+    // Bottom-Left
+    paint.color = lightGold;
+    final blPath = Path()
+      ..moveTo(0, cyVal)
+      ..lineTo(cxVal, cyVal)
+      ..lineTo(cxVal, h)
+      ..quadraticBezierTo(w * 0.05, h * 0.6, 0, cyVal)
+      ..close();
+    canvas.drawPath(blPath, paint);
+
+    // Bottom-Right
+    paint.color = darkGold;
+    final brPath = Path()
+      ..moveTo(w, cyVal)
+      ..lineTo(cxVal, cyVal)
+      ..lineTo(cxVal, h)
+      ..quadraticBezierTo(w * 0.95, h * 0.6, w, cyVal)
+      ..close();
+    canvas.drawPath(brPath, paint);
+
+    canvas.restore();
+    
+    final borderPaint = Paint()
+      ..color = const Color(0xFF5A4516)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+    canvas.drawPath(path, borderPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class WatermarkShield extends StatelessWidget {
+  final double size;
+  const WatermarkShield({super.key, this.size = 280});
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: Size(size, size),
+      painter: _WatermarkShieldPainter(),
+    );
+  }
+}
+
+class _WatermarkShieldPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    final cx = w / 2;
+    
+    final path = Path();
+    path.moveTo(cx, 0);
+    path.quadraticBezierTo(w * 0.15, h * 0.05, 0, h * 0.15);
+    path.quadraticBezierTo(w * 0.05, h * 0.6, cx, h);
+    path.quadraticBezierTo(w * 0.95, h * 0.6, w, h * 0.15);
+    path.quadraticBezierTo(w * 0.85, h * 0.05, cx, 0);
+    path.close();
+
+    canvas.save();
+    canvas.clipPath(path);
+
+    final cy = h * 0.45;
+    final fillPaint = Paint()..style = PaintingStyle.fill;
+    
+    final baseOpacityColor = Colors.white.withValues(alpha: 0.02);
+    final altOpacityColor = Colors.white.withValues(alpha: 0.05);
+
+    // Top-Left
+    fillPaint.color = baseOpacityColor;
+    canvas.drawRect(Rect.fromLTRB(0, 0, cx, cy), fillPaint);
+    
+    // Top-Right
+    fillPaint.color = altOpacityColor;
+    canvas.drawRect(Rect.fromLTRB(cx, 0, w, cy), fillPaint);
+
+    // Bottom-Left
+    fillPaint.color = altOpacityColor;
+    canvas.drawPath(
+      Path()
+        ..moveTo(0, cy)
+        ..lineTo(cx, cy)
+        ..lineTo(cx, h)
+        ..quadraticBezierTo(w * 0.05, h * 0.6, 0, cy)
+        ..close(),
+      fillPaint,
+    );
+
+    // Bottom-Right
+    fillPaint.color = baseOpacityColor;
+    canvas.drawPath(
+      Path()
+        ..moveTo(w, cy)
+        ..lineTo(cx, cy)
+        ..lineTo(cx, h)
+        ..quadraticBezierTo(w * 0.95, h * 0.6, w, cy)
+        ..close(),
+      fillPaint,
+    );
+
+    canvas.restore();
+
+    final linePaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.06)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    
+    canvas.drawLine(Offset(cx, 0), Offset(cx, h), linePaint);
+    canvas.drawLine(Offset(0, cy), Offset(w, cy), linePaint);
+
+    final outlinePaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.09)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0;
+    canvas.drawPath(path, outlinePaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _WatermarkShieldPainter oldDelegate) => false;
 }

@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/app_providers.dart';
 import 'home_screen.dart';
 import 'scan_screen.dart';
 import 'alerts_screen.dart';
 import 'settings_screen.dart';
 import 'widgets/custom_bottom_nav_bar.dart';
 
-class MainScreen extends StatefulWidget {
+class MainScreen extends ConsumerStatefulWidget {
   const MainScreen({super.key});
 
   @override
-  State<MainScreen> createState() => _MainScreenState();
+  ConsumerState<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
+class _MainScreenState extends ConsumerState<MainScreen> {
   int currentIndex = 0;
   String? _pendingUrlForScan;
 
@@ -29,18 +31,21 @@ class _MainScreenState extends State<MainScreen> {
                 currentIndex = 1;
                 _pendingUrlForScan = null;
               });
+              ref.read(tabIndexProvider.notifier).state = 1;
             },
             onNavigateToAlerts: () {
               setState(() {
                 currentIndex = 2;
                 _pendingUrlForScan = null;
               });
+              ref.read(tabIndexProvider.notifier).state = 2;
             },
             onNavigateToSettings: () {
               setState(() {
                 currentIndex = 3;
                 _pendingUrlForScan = null;
               });
+              ref.read(tabIndexProvider.notifier).state = 3;
             },
           ),
           ScanScreen(initialUrl: _pendingUrlForScan),
@@ -56,6 +61,7 @@ class _MainScreenState extends State<MainScreen> {
             // Clear pending URL when user manually changes tabs
             _pendingUrlForScan = null;
           });
+          ref.read(tabIndexProvider.notifier).state = index;
         },
       ),
     );

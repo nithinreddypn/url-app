@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/app_theme.dart';
 import 'package:go_router/go_router.dart';
 import '../models/url_scan_model.dart';
-import '../services/supabase_config.dart';
 import '../services/url_scan_service.dart';
+import '../providers/app_providers.dart';
 
-class ScanHistoryScreen extends StatefulWidget {
+class ScanHistoryScreen extends ConsumerStatefulWidget {
   const ScanHistoryScreen({super.key});
 
   @override
-  State<ScanHistoryScreen> createState() => _ScanHistoryScreenState();
+  ConsumerState<ScanHistoryScreen> createState() => _ScanHistoryScreenState();
 }
 
-class _ScanHistoryScreenState extends State<ScanHistoryScreen> {
+class _ScanHistoryScreenState extends ConsumerState<ScanHistoryScreen> {
   Color get _bgColor => context.bg;
   Color get _cardColor => context.cardBg;
   Color get _surfaceColor => context.border;
@@ -44,7 +45,7 @@ class _ScanHistoryScreenState extends State<ScanHistoryScreen> {
   Future<void> _loadHistory() async {
     setState(() => _isLoading = true);
     try {
-      final userId = SupabaseConfig.client.auth.currentUser?.id;
+      final userId = ref.read(userProvider)?.userId;
       if (userId != null) {
         final scans = await _scanService.getUserScans(userId);
         setState(() {
@@ -85,6 +86,22 @@ class _ScanHistoryScreenState extends State<ScanHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(scanHistoryProvider).whenData((scans) {
+      _allScans = scans;
+      // Re-filter scans list
+      final query = _searchController.text.toLowerCase().trim();
+      if (query.isEmpty) {
+        _filteredScans = scans;
+      } else {
+        _filteredScans = scans.where((scan) {
+          final urlMatch = scan.scannedUrl.toLowerCase().contains(query);
+          final resultMatch = (scan.scanResult ?? '').toLowerCase().contains(query);
+          final threatMatch = (scan.threatType ?? '').toLowerCase().contains(query);
+          return urlMatch || resultMatch || threatMatch;
+        }).toList();
+      }
+    });
+
     return Scaffold(
       backgroundColor: _bgColor,
       appBar: AppBar(
@@ -110,7 +127,10 @@ class _ScanHistoryScreenState extends State<ScanHistoryScreen> {
             child: RefreshIndicator(
               color: _primaryGreen,
               backgroundColor: _cardColor,
-              onRefresh: _loadHistory,
+              onRefresh: () async {
+                ref.invalidate(scanHistoryProvider);
+                await _loadHistory();
+              },
               child: _isLoading
                   ? Center(
                       child: CircularProgressIndicator(
@@ -271,140 +291,147 @@ class _ScanHistoryScreenState extends State<ScanHistoryScreen> {
       riskColor = _red;
     }
 
-    return Container(
-      margin: EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: _cardColor,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: resultColor.withValues(alpha: 0.12),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 8,
-            offset: Offset(0, 3),
+        onTap: () => context.push('/scan-detail/${scan.scanId}'),
+        child: Container(
+          margin: EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: _cardColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: resultColor.withValues(alpha: 0.12),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.1),
+                blurRadius: 8,
+                offset: Offset(0, 3),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: Padding(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Padding(
+            padding: EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Scan status badge
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: resultColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        isSafe ? Icons.check_circle_outline_rounded : Icons.warning_amber_rounded,
-                        color: resultColor,
-                        size: 14,
-                      ),
-                      SizedBox(width: 6),
-                      Text(
-                        isSafe ? 'SAFE' : (scan.threatType ?? 'DANGEROUS').toUpperCase(),
-                        style: TextStyle(
-                          color: resultColor,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.0,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                // Risk score badge
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Scan status badge
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: resultColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            isSafe ? Icons.check_circle_outline_rounded : Icons.warning_amber_rounded,
+                            color: resultColor,
+                            size: 14,
+                          ),
+                          SizedBox(width: 6),
+                          Text(
+                            isSafe ? 'SAFE' : (scan.threatType ?? 'DANGEROUS').toUpperCase(),
+                            style: TextStyle(
+                              color: resultColor,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 1.0,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Risk score badge
+                    Row(
+                      children: [
+                        Text(
+                          'Risk Score: ',
+                          style: TextStyle(
+                            color: _textPrimary.withValues(alpha: 0.4),
+                            fontSize: 12,
+                          ),
+                        ),
+                        Text(
+                          '$riskScore%',
+                          style: TextStyle(
+                            color: riskColor,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                SizedBox(height: 12),
+                // Scanned URL
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.link_rounded,
+                      size: 16,
+                      color: _textPrimary.withValues(alpha: 0.3),
+                    ),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        scan.scannedUrl,
+                        style: TextStyle(
+                          color: _textPrimary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          height: 1.3,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 12),
+                Divider(color: _surfaceColor, height: 1),
+                SizedBox(height: 10),
+                // Timestamp and reports
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      'Risk Score: ',
+                      _timeAgo(scan.scannedAt),
                       style: TextStyle(
-                        color: _textPrimary.withValues(alpha: 0.4),
+                        color: _textPrimary.withValues(alpha: 0.3),
                         fontSize: 12,
                       ),
                     ),
-                    Text(
-                      '$riskScore%',
-                      style: TextStyle(
-                        color: riskColor,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                      ),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.bug_report_outlined,
+                          size: 14,
+                          color: _textPrimary.withValues(alpha: 0.3),
+                        ),
+                        SizedBox(width: 4),
+                        Text(
+                          'VT: ${scan.virusTotalFlags}',
+                          style: TextStyle(
+                            color: _textPrimary.withValues(alpha: 0.4),
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ],
             ),
-            SizedBox(height: 12),
-            // Scanned URL
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  Icons.link_rounded,
-                  size: 16,
-                  color: _textPrimary.withValues(alpha: 0.3),
-                ),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    scan.scannedUrl,
-                    style: TextStyle(
-                      color: _textPrimary,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      height: 1.3,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 12),
-            Divider(color: _surfaceColor, height: 1),
-            SizedBox(height: 10),
-            // Timestamp and reports
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  _timeAgo(scan.scannedAt),
-                  style: TextStyle(
-                    color: _textPrimary.withValues(alpha: 0.3),
-                    fontSize: 12,
-                  ),
-                ),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.bug_report_outlined,
-                      size: 14,
-                      color: _textPrimary.withValues(alpha: 0.3),
-                    ),
-                    SizedBox(width: 4),
-                    Text(
-                      'VT: ${scan.virusTotalFlags}',
-                      style: TextStyle(
-                        color: _textPrimary.withValues(alpha: 0.4),
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ],
+          ),
         ),
       ),
     );

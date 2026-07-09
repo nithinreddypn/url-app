@@ -1,4 +1,4 @@
-package com.example.url_defender
+package com.urldefenders
 
 import io.flutter.embedding.android.FlutterActivity
 

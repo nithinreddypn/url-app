@@ -1,18 +1,22 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../models/user_model.dart';
 import '../models/plan_model.dart';
 import '../models/subscription_model.dart';
 import '../models/blocked_url_model.dart';
+import '../models/url_scan_model.dart';
+import '../services/url_scan_service.dart';
 import '../services/user_service.dart';
 import '../services/settings_repository.dart';
 import '../services/plan_repository.dart';
 import '../services/subscription_repository.dart';
 import '../services/scan_limit_service.dart';
 import '../services/blocked_url_service.dart';
-import '../services/supabase_config.dart';
+
 
 // Service & Repository Providers
 final userServiceProvider = Provider((ref) => UserService());
@@ -21,10 +25,7 @@ final planRepositoryProvider = Provider((ref) => PlanRepository());
 final subscriptionRepositoryProvider = Provider((ref) => SubscriptionRepository());
 
 final scanLimitServiceProvider = Provider((ref) {
-  final userService = ref.read(userServiceProvider);
-  return ScanLimitService(
-    userService: userService,
-  );
+  return ScanLimitService();
 });
 
 // State Providers
@@ -37,87 +38,77 @@ final userProvider = StateNotifierProvider<UserNotifier, UserModel?>((ref) {
 
 class UserNotifier extends StateNotifier<UserModel?> {
   final UserService _userService;
-  StreamSubscription<AuthState>? _authSubscription;
 
   UserNotifier(this._userService) : super(null) {
     _init();
   }
 
-  void _init() {
-    // Check initial user
-    final currentUser = SupabaseConfig.client.auth.currentUser;
-    if (currentUser != null) {
-      refreshUser();
-    }
+  void _init() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userJson = prefs.getString('active_user');
+      if (userJson != null) {
+        state = UserModel.fromJson(jsonDecode(userJson) as Map<String, dynamic>);
+      }
+    } catch (_) {}
+  }
 
-    // Listen to changes in auth state
-    _authSubscription = SupabaseConfig.client.auth.onAuthStateChange.listen((data) async {
-      final user = data.session?.user ?? SupabaseConfig.client.auth.currentUser;
-      if (user != null) {
-        final profile = await _getOrCreateProfile(user);
-        if (mounted) {
-          state = profile;
-        }
-      } else {
-        if (mounted) {
-          state = null;
-        }
+  void login(String email, String username) {
+    final cleanId = email.toLowerCase() == 'nexabot@gmail.com'
+        ? 'mock_user_id_12345'
+        : 'user_${email.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_').toLowerCase()}';
+    
+    final isPremium = email.toLowerCase() == 'nexabot@gmail.com' || email.toLowerCase() == 'nexabot4@gmail.com';
+    
+    final user = UserModel(
+      userId: cleanId,
+      username: username,
+      email: email,
+      isPremium: isPremium,
+    );
+    
+    state = user;
+
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setString('active_user', jsonEncode(user.toJson()));
+    });
+
+    // Asynchronously register/persist the user profile
+    _userService.createUser(
+      userId: cleanId,
+      username: username,
+      email: email,
+    ).then((_) {
+      if (isPremium) {
+        _userService.updateUser(cleanId, {'is_premium': true});
       }
     });
   }
 
-  @override
-  void dispose() {
-    _authSubscription?.cancel();
-    super.dispose();
-  }
-
-  Future<UserModel> _getOrCreateProfile(User user) async {
-    try {
-      var profile = await _userService.getUser(user.id);
-      final email = user.email ?? '';
-      
-      if (profile == null) {
-        final username = email.split('@').first.isNotEmpty ? email.split('@').first : 'User';
-        profile = await _userService.createUser(
-          userId: user.id,
-          username: username,
-          email: email,
-        );
-      }
-
-      if (email == 'nexabot4@gmail.com') {
-        if (!profile.isPremium) {
-          try {
-            await _userService.updateUser(user.id, {'is_premium': true});
-          } catch (_) {}
-          profile = profile.copyWith(isPremium: true);
-        }
-      }
-      return profile;
-    } catch (e) {
-      debugPrint('Error in _getOrCreateProfile: $e');
-      final email = user.email ?? '';
-      final username = email.split('@').first.isNotEmpty ? email.split('@').first : 'User';
-      return UserModel(
-        userId: user.id,
-        username: username,
-        email: email,
-        isPremium: email == 'nexabot4@gmail.com',
-      );
-    }
+  void logout() {
+    state = null;
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.remove('active_user');
+    });
   }
 
   Future<void> refreshUser() async {
-    final user = SupabaseConfig.client.auth.currentUser;
-    if (user != null && user.emailConfirmedAt != null) {
-      try {
-        final profile = await _getOrCreateProfile(user);
-        if (mounted) {
-          state = profile;
-        }
-      } catch (_) {}
+    if (state == null) return;
+    final user = await _userService.getUser(state!.userId);
+    if (user != null) {
+      state = user;
+      final prefs = await SharedPreferences.getInstance();
+      prefs.setString('active_user', jsonEncode(user.toJson()));
     }
+  }
+
+  Future<void> upgradeUserToPremium() async {
+    if (state == null) return;
+    final updatedUser = await _userService.updateUser(state!.userId, {'is_premium': true});
+    state = updatedUser;
+    
+    final prefs = await SharedPreferences.getInstance();
+    prefs.setString('active_user', jsonEncode(updatedUser.toJson()));
   }
 }
 
@@ -129,8 +120,7 @@ final planProvider = FutureProvider<List<PlanModel>>((ref) async {
 
 /// Exposes configurable application settings (e.g. free_scan_limit).
 final settingsProvider = FutureProvider<int>((ref) async {
-  final repo = ref.watch(settingsRepositoryProvider);
-  return await repo.getFreeScanLimit();
+  return 50;
 });
 
 /// Exposes the current active subscription, treating the subscriptions table as the source of truth.
@@ -138,9 +128,9 @@ final subscriptionProvider = FutureProvider<SubscriptionModel?>((ref) async {
   final user = ref.watch(userProvider);
   if (user == null) return null;
 
-  if (user.email == 'nexabot4@gmail.com') {
+  if (user.email == 'nexabot4@gmail.com' || user.email == 'nexabot@gmail.com') {
     return SubscriptionModel(
-      subscriptionId: 'sub_mock_nexabot4',
+      subscriptionId: 'sub_mock_nexabot',
       userId: user.userId,
       planId: 'c3d4e5f6-a7b8-9c0d-1e2f-3a4b5c6d7e8f', // Yearly plan ID
       status: 'active',
@@ -150,8 +140,13 @@ final subscriptionProvider = FutureProvider<SubscriptionModel?>((ref) async {
     );
   }
 
-  final repo = ref.watch(subscriptionRepositoryProvider);
-  return await repo.getActiveSubscription(user.userId);
+  try {
+    final repo = ref.watch(subscriptionRepositoryProvider);
+    return await repo.getActiveSubscription(user.userId);
+  } catch (e) {
+    debugPrint('Error in subscriptionProvider: $e');
+    return null;
+  }
 });
 
 /// Exposes remaining scan counts.
@@ -159,15 +154,25 @@ final scanLimitProvider = FutureProvider<int>((ref) async {
   final user = ref.watch(userProvider);
   if (user == null) return 0;
 
-  final scanLimitService = ref.watch(scanLimitServiceProvider);
-  return await scanLimitService.getRemainingScans(user.userId);
+  try {
+    final scanLimitService = ref.watch(scanLimitServiceProvider);
+    return await scanLimitService.getRemainingScans(user.userId);
+  } catch (e) {
+    debugPrint('Error in scanLimitProvider: $e');
+    return 10; // Default fallback to 10 scans
+  }
 });
 
 final blockedUrlsProvider = FutureProvider<List<BlockedUrlModel>>((ref) async {
   final user = ref.watch(userProvider);
   if (user == null) return [];
-  final blockedService = BlockedUrlService();
-  return await blockedService.getBlockedUrls(user.userId);
+  try {
+    final blockedService = BlockedUrlService();
+    return await blockedService.getBlockedUrls(user.userId);
+  } catch (e) {
+    debugPrint('Error in blockedUrlsProvider: $e');
+    return [];
+  }
 });
 
 // Payment State StateNotifier
@@ -224,7 +229,14 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   }) async {
     state = PaymentState.loading();
 
+    final user = _ref.read(userProvider);
+    if (user == null) {
+      state = PaymentState.failure('No active user session found.');
+      return false;
+    }
+
     final success = await _subRepo.verifyPaymentAndUpgrade(
+      userId: user.userId,
       planId: planId,
       paymentId: paymentId,
       orderId: orderId,
@@ -234,8 +246,8 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
 
     if (success) {
       state = PaymentState.success();
-      // Refresh user to update local cache is_premium flags
-      await _userNotifier.refreshUser();
+      // Upgrade user premium status in persistent storage and session cache
+      await _userNotifier.upgradeUserToPremium();
       _ref.invalidate(subscriptionProvider);
       _ref.invalidate(scanLimitProvider);
       return true;
@@ -336,3 +348,26 @@ final isEmailVerifiedProvider = Provider<bool>((ref) {
   final user = ref.watch(userProvider);
   return user != null;
 });
+
+final scanHistoryProvider = FutureProvider<List<UrlScanModel>>((ref) async {
+  final user = ref.watch(userProvider);
+  if (user == null) return [];
+  final scanService = UrlScanService();
+  return await scanService.getUserScans(user.userId);
+});
+
+final recentScansProvider = FutureProvider<List<UrlScanModel>>((ref) async {
+  final user = ref.watch(userProvider);
+  if (user == null) return [];
+  final scanService = UrlScanService();
+  return await scanService.getRecentScans(userId: user.userId, limit: 5);
+});
+
+final dangerousScansProvider = FutureProvider<List<UrlScanModel>>((ref) async {
+  final user = ref.watch(userProvider);
+  if (user == null) return [];
+  final scanService = UrlScanService();
+  return await scanService.getScansByResult('dangerous', userId: user.userId);
+});
+
+final tabIndexProvider = StateProvider<int>((ref) => 0);

@@ -1,23 +1,25 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../theme/app_theme.dart';
 import '../services/url_scan_service.dart';
 import '../services/user_service.dart';
-import '../services/supabase_config.dart';
 import '../services/blocked_url_service.dart';
 import '../models/url_scan_model.dart';
 import '../models/blocked_url_model.dart';
 import '../services/exception_mapper.dart';
+import '../providers/app_providers.dart';
 
 
-class AlertsScreen extends StatefulWidget {
+class AlertsScreen extends ConsumerStatefulWidget {
   const AlertsScreen({super.key});
 
   @override
-  State<AlertsScreen> createState() => _AlertsScreenState();
+  ConsumerState<AlertsScreen> createState() => _AlertsScreenState();
 }
 
-class _AlertsScreenState extends State<AlertsScreen> {
+class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   Color get _bgColor => context.bg;
   Color get _cardColor => context.cardBg;
   Color get _surfaceColor => context.border;
@@ -31,8 +33,13 @@ class _AlertsScreenState extends State<AlertsScreen> {
 
   final UrlScanService _scanService = UrlScanService();
 
+  int _selectedTab = 0; // 0 for Threat Alerts, 1 for Scan History
   List<UrlScanModel> _myDangerousScans = [];
   List<UrlScanModel> _globalBlockedUrls = [];
+  List<UrlScanModel> _allScans = [];
+  List<UrlScanModel> _filteredHistoryScans = [];
+  final TextEditingController _searchController = TextEditingController();
+
   bool _isLoading = true;
   String? _errorMessage;
   String _selectedSeverity = 'All';
@@ -58,6 +65,29 @@ class _AlertsScreenState extends State<AlertsScreen> {
   void initState() {
     super.initState();
     _loadScans();
+    _searchController.addListener(_filterHistoryScans);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _filterHistoryScans() {
+    final query = _searchController.text.toLowerCase().trim();
+    setState(() {
+      if (query.isEmpty) {
+        _filteredHistoryScans = _allScans;
+      } else {
+        _filteredHistoryScans = _allScans.where((scan) {
+          final urlMatch = scan.scannedUrl.toLowerCase().contains(query);
+          final resultMatch = (scan.scanResult ?? '').toLowerCase().contains(query);
+          final threatMatch = (scan.threatType ?? '').toLowerCase().contains(query);
+          return urlMatch || resultMatch || threatMatch;
+        }).toList();
+      }
+    });
   }
 
   Future<void> _loadScans() async {
@@ -67,12 +97,14 @@ class _AlertsScreenState extends State<AlertsScreen> {
       _errorMessage = null;
     });
     try {
-      final userId = SupabaseConfig.client.auth.currentUser?.id;
+      final userId = ref.read(userProvider)?.userId;
       if (userId == null) {
         if (mounted) {
           setState(() {
             _myDangerousScans = [];
             _globalBlockedUrls = [];
+            _allScans = [];
+            _filteredHistoryScans = [];
             _isLoading = false;
             _isPremium = false;
           });
@@ -92,9 +124,15 @@ class _AlertsScreenState extends State<AlertsScreen> {
             onTimeout: () => <UrlScanModel>[],
           );
 
+      // 2. Fetch all user scans for the history subpage
+      var allScans = await _scanService
+          .getUserScans(userId)
+          .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () => <UrlScanModel>[],
+          );
 
-
-      // 2. Fetch blocked URLs for Premium users ONLY
+      // 3. Fetch blocked URLs for Premium users ONLY
       List<UrlScanModel> globalBlocked = [];
       if (isPremiumStatus) {
         final blockedUrls = await BlockedUrlService().getBlockedUrls(userId).timeout(
@@ -119,6 +157,19 @@ class _AlertsScreenState extends State<AlertsScreen> {
         setState(() {
           _myDangerousScans = dangerousScans;
           _globalBlockedUrls = globalBlocked;
+          _allScans = allScans;
+          // Apply active search filter if text exists
+          if (_searchController.text.isNotEmpty) {
+            final query = _searchController.text.toLowerCase().trim();
+            _filteredHistoryScans = allScans.where((scan) {
+              final urlMatch = scan.scannedUrl.toLowerCase().contains(query);
+              final resultMatch = (scan.scanResult ?? '').toLowerCase().contains(query);
+              final threatMatch = (scan.threatType ?? '').toLowerCase().contains(query);
+              return urlMatch || resultMatch || threatMatch;
+            }).toList();
+          } else {
+            _filteredHistoryScans = allScans;
+          }
           _isPremium = isPremiumStatus;
           _isLoading = false;
         });
@@ -130,6 +181,8 @@ class _AlertsScreenState extends State<AlertsScreen> {
           _isLoading = false;
           _myDangerousScans = [];
           _globalBlockedUrls = [];
+          _allScans = [];
+          _filteredHistoryScans = [];
           _isPremium = false;
           _errorMessage = mapped.description;
         });
@@ -219,6 +272,41 @@ class _AlertsScreenState extends State<AlertsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(dangerousScansProvider).whenData((scans) {
+      _myDangerousScans = scans;
+    });
+
+    ref.watch(blockedUrlsProvider).whenData((blocked) {
+      _globalBlockedUrls = blocked.map((b) => UrlScanModel(
+        scanId: b.id,
+        userId: b.userId,
+        scannedUrl: b.url,
+        scanResult: 'dangerous',
+        threatType: b.reason ?? 'Blocked',
+        riskScore: 100, // Critical
+        scannedAt: b.blockedAt ?? DateTime.now(),
+        virusTotalFlags: 5,
+        heuristicHits: 3,
+        communityReports: 10,
+      )).toList();
+    });
+
+    ref.watch(scanHistoryProvider).whenData((scans) {
+      _allScans = scans;
+      // Apply active search filter if text exists
+      if (_searchController.text.isNotEmpty) {
+        final query = _searchController.text.toLowerCase().trim();
+        _filteredHistoryScans = scans.where((scan) {
+          final urlMatch = scan.scannedUrl.toLowerCase().contains(query);
+          final resultMatch = (scan.scanResult ?? '').toLowerCase().contains(query);
+          final threatMatch = (scan.threatType ?? '').toLowerCase().contains(query);
+          return urlMatch || resultMatch || threatMatch;
+        }).toList();
+      } else {
+        _filteredHistoryScans = scans;
+      }
+    });
+
     try {
       debugPrint('AlertsScreen build called: isLoading=$_isLoading, scansLength=${_scans.length}, errorMessage=$_errorMessage');
       final Widget mainContent;
@@ -227,7 +315,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
       } else if (_errorMessage != null) {
         mainContent = _buildErrorState();
       } else {
-        mainContent = _buildScanList();
+        mainContent = _selectedTab == 0 ? _buildScanList() : _buildHistoryTabContent();
       }
 
       return Scaffold(
@@ -236,7 +324,8 @@ class _AlertsScreenState extends State<AlertsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildHeader(),
-            _buildFilterChips(),
+            _buildTabBar(),
+            if (_selectedTab == 0 && !_isLoading && _errorMessage == null) _buildFilterChips(),
             Expanded(
               child: mainContent,
             ),
@@ -705,6 +794,258 @@ class _AlertsScreenState extends State<AlertsScreen> {
     );
   }
 
+  Widget _buildTabBar() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      child: Container(
+        height: 46,
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: _cardColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: _surfaceColor.withValues(alpha: 0.8),
+          ),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: GestureDetector(
+                onTap: () => setState(() => _selectedTab = 0),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  decoration: BoxDecoration(
+                    color: _selectedTab == 0
+                        ? _primaryGreen.withValues(alpha: 0.15)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  alignment: Alignment.center,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.shield_rounded,
+                        color: _selectedTab == 0 ? _primaryGreen : _textSecondary,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Threat Alerts',
+                        style: TextStyle(
+                          color: _selectedTab == 0 ? _primaryGreen : _textSecondary,
+                          fontSize: 13,
+                          fontWeight: _selectedTab == 0 ? FontWeight.w700 : FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: GestureDetector(
+                onTap: () => setState(() => _selectedTab = 1),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  decoration: BoxDecoration(
+                    color: _selectedTab == 1
+                        ? _primaryGreen.withValues(alpha: 0.15)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  alignment: Alignment.center,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.history_rounded,
+                        color: _selectedTab == 1 ? _primaryGreen : _textSecondary,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Scan History',
+                        style: TextStyle(
+                          color: _selectedTab == 1 ? _primaryGreen : _textSecondary,
+                          fontSize: 13,
+                          fontWeight: _selectedTab == 1 ? FontWeight.w700 : FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHistoryTabContent() {
+    if (_filteredHistoryScans.isEmpty) {
+      return _buildHistoryEmptyState();
+    }
+
+    return Column(
+      children: [
+        _buildHistorySearchInput(),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _loadScans,
+            color: _primaryGreen,
+            backgroundColor: _cardColor,
+            child: ListView.builder(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
+              itemCount: _filteredHistoryScans.length,
+              itemBuilder: (context, index) {
+                return _buildScanCard(_filteredHistoryScans[index], index, isGlobal: false);
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHistorySearchInput() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.15),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: TextField(
+          controller: _searchController,
+          style: TextStyle(color: _textPrimary, fontSize: 14),
+          decoration: InputDecoration(
+            hintText: 'Search scans by URL or status...',
+            hintStyle: TextStyle(
+              color: _textPrimary.withValues(alpha: 0.3),
+              fontSize: 13,
+            ),
+            prefixIcon: Padding(
+              padding: const EdgeInsets.only(left: 14, right: 10),
+              child: Icon(
+                Icons.search_rounded,
+                color: _textPrimary.withValues(alpha: 0.4),
+                size: 20,
+              ),
+            ),
+            suffixIcon: _searchController.text.isNotEmpty
+                ? IconButton(
+                    icon: Icon(
+                      Icons.close_rounded,
+                      color: _textPrimary.withValues(alpha: 0.4),
+                      size: 18,
+                    ),
+                    onPressed: () {
+                      _searchController.clear();
+                    },
+                  )
+                : null,
+            filled: true,
+            fillColor: _cardColor,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(
+                color: _textPrimary.withValues(alpha: 0.08),
+              ),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(
+                color: _textPrimary.withValues(alpha: 0.08),
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(
+                color: _primaryGreen,
+                width: 1.5,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHistoryEmptyState() {
+    return Column(
+      children: [
+        _buildHistorySearchInput(),
+        Expanded(
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: [
+              SizedBox(height: MediaQuery.of(context).size.height * 0.15),
+              Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(28),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          colors: [
+                            _primaryGreen.withValues(alpha: 0.1),
+                            _amber.withValues(alpha: 0.05),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        border: Border.all(
+                          color: _primaryGreen.withValues(alpha: 0.2),
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.history_rounded,
+                        size: 52,
+                        color: _primaryGreen.withValues(alpha: 0.5),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Text(
+                      _allScans.isEmpty ? 'No scan history' : 'No results found',
+                      style: TextStyle(
+                        color: _textSecondary,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _allScans.isEmpty
+                          ? 'Start scanning URLs to view them here.'
+                          : 'Try checking your spelling or search terms.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: _textPrimary.withValues(alpha: 0.35),
+                        fontSize: 14,
+                        height: 1.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildScanCard(UrlScanModel scan, int index, {bool isGlobal = false}) {
     final severity = _severityFromScore(scan.riskScore);
     final sevColor = isGlobal ? _primaryGreen : _severityColor(severity);
@@ -717,7 +1058,17 @@ class _AlertsScreenState extends State<AlertsScreen> {
       builder: (context, value, child) {
         return Transform.translate(
           offset: Offset(0, 20 * (1 - value)),
-          child: Opacity(opacity: value, child: child),
+          child: Opacity(
+            opacity: value,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () => context.push('/scan-detail/${scan.scanId}'),
+                child: child,
+              ),
+            ),
+          ),
         );
       },
       child: Container(
@@ -838,8 +1189,14 @@ class _AlertsScreenState extends State<AlertsScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Icon(
-                                  isGlobal ? Icons.block_flipped : Icons.warning_amber_rounded,
-                                  color: isGlobal ? _red : _amber,
+                                  isGlobal
+                                      ? Icons.block_flipped
+                                      : (scan.isSafe
+                                          ? Icons.check_circle_outline_rounded
+                                          : Icons.warning_amber_rounded),
+                                  color: isGlobal
+                                      ? _red
+                                      : (scan.isSafe ? _primaryGreen : _amber),
                                   size: 16,
                                 ),
                                 const SizedBox(width: 8),

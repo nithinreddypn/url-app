@@ -4,7 +4,6 @@ import '../../theme/app_theme.dart';
 import '../../services/auth_service.dart';
 import '../../services/alert_service.dart';
 import '../../services/password_validator.dart';
-import '../../services/exception_mapper.dart';
 import '../widgets/password_validation_checklist.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
@@ -125,13 +124,10 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen>
     } catch (e) {
       if (!mounted) return;
       
-      // Clean up Supabase error messages
-      final mappedException = ExceptionMapper.map(e);
-      AlertService.showAlert(
+      AlertService.showError(
         context,
-        type: AlertType.error,
-        title: 'Reset Failed',
-        description: mappedException.description,
+        e,
+        customTitle: 'Unable to reset password',
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -197,8 +193,8 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen>
                     animation: _glowController,
                     builder: (context, child) {
                       return Container(
-                        width: 100,
-                        height: 100,
+                        width: 70,
+                        height: 70,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: Colors.white,
@@ -212,7 +208,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen>
                           ],
                         ),
                         child: ClipRRect(
-                          borderRadius: BorderRadius.circular(50),
+                          borderRadius: BorderRadius.circular(35),
                           child: Image.asset(
                             'assets/images/logo.png',
                             fit: BoxFit.cover,

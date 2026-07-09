@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import '../../theme/app_theme.dart';
 
 class ScanLimitDialog extends StatelessWidget {
@@ -11,7 +10,6 @@ class ScanLimitDialog extends StatelessWidget {
     final surfaceColor = context.border;
     final textPrimary = context.textPrimary;
     final textSecondary = context.textSecondary;
-    final primaryGreen = context.activeAccent;
     final errorRed = context.isDark ? const Color(0xFFEF4444) : const Color(0xFFDC2626);
 
     return AlertDialog(
@@ -53,47 +51,19 @@ class ScanLimitDialog extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            "You've used your 1 free scan for this week. Upgrade to URL Defender Plus to unlock:",
+            "You've reached the limit of 50 free URL scans allowed. Please contact support or check back later.",
             style: TextStyle(
               color: textSecondary,
               fontSize: 14,
               height: 1.4,
             ),
           ),
-          const SizedBox(height: 20),
-          _buildFeatureRow(Icons.check_circle_outline_rounded, 'Unlimited URL Scans', primaryGreen, textPrimary),
-          const SizedBox(height: 10),
-          _buildFeatureRow(Icons.psychology_outlined, 'AI Threat Analysis', primaryGreen, textPrimary),
-          const SizedBox(height: 10),
-          _buildFeatureRow(Icons.share_outlined, 'Community Threat Intelligence', primaryGreen, textPrimary),
-          const SizedBox(height: 10),
-          _buildFeatureRow(Icons.speed_rounded, 'Priority Processing', primaryGreen, textPrimary),
         ],
       ),
       actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
       actions: [
         Row(
           children: [
-            Expanded(
-              child: OutlinedButton(
-                onPressed: () => Navigator.pop(context),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  side: BorderSide(color: textSecondary.withValues(alpha: 0.5)),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: Text(
-                  'Cancel',
-                  style: TextStyle(
-                    color: textSecondary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
@@ -110,7 +80,6 @@ class ScanLimitDialog extends StatelessWidget {
                 child: ElevatedButton(
                   onPressed: () {
                     Navigator.pop(context);
-                    context.push('/premium');
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.transparent,
@@ -121,7 +90,7 @@ class ScanLimitDialog extends StatelessWidget {
                     ),
                   ),
                   child: const Text(
-                    'Upgrade to Plus',
+                    'Close',
                     style: TextStyle(
                       color: Color(0xFF121212),
                       fontWeight: FontWeight.w700,
@@ -131,25 +100,6 @@ class ScanLimitDialog extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildFeatureRow(IconData icon, String text, Color primaryGreen, Color textPrimary) {
-    return Row(
-      children: [
-        Icon(icon, color: primaryGreen, size: 20),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            text,
-            style: TextStyle(
-              color: textPrimary,
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
         ),
       ],
     );

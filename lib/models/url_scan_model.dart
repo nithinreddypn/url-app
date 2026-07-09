@@ -38,12 +38,12 @@ class UrlScanModel {
 
   factory UrlScanModel.fromJson(Map<String, dynamic> json) {
     return UrlScanModel(
-      scanId: json['scan_id'] as String,
+      scanId: (json['scan_id'] ?? json['id']) as String? ?? DateTime.now().millisecondsSinceEpoch.toString(),
       userId: json['user_id'] as String?,
-      scannedUrl: json['scanned_url'] as String,
-      scanResult: json['scan_result'] as String?,
+      scannedUrl: json['scanned_url'] as String? ?? '',
+      scanResult: json['scan_result'] as String? ?? 'safe',
       threatType: json['threat_type'] as String?,
-      riskScore: json['risk_score'] as int?,
+      riskScore: json['risk_score'] as int? ?? 0,
       scannedAt: json['scanned_at'] != null
           ? _parseUtc(json['scanned_at'] as String)
           : null,
@@ -55,11 +55,13 @@ class UrlScanModel {
 
   Map<String, dynamic> toJson() {
     return {
+      'scan_id': scanId,
       'user_id': userId,
       'scanned_url': scannedUrl,
       'scan_result': scanResult,
       'threat_type': threatType,
       'risk_score': riskScore,
+      'scanned_at': scannedAt?.toIso8601String(),
       'virus_total_flags': virusTotalFlags,
       'heuristic_hits': heuristicHits,
       'community_reports': communityReports,

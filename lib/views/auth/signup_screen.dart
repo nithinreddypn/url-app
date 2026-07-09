@@ -1,12 +1,9 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/app_providers.dart';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../../theme/app_theme.dart';
 import 'package:go_router/go_router.dart';
-import '../../services/auth_service.dart';
-import '../../services/user_service.dart';
 import '../../services/password_validator.dart';
 import '../../services/alert_service.dart';
 import '../widgets/password_validation_checklist.dart';
@@ -26,8 +23,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
   final _confirmPasswordController = TextEditingController();
   final _passwordFocusNode = FocusNode();
   final _formKey = GlobalKey<FormState>();
-  final _authService = AuthService();
-  final _userService = UserService();
 
   bool _isLoading = false;
   bool _obscurePassword = true;
@@ -68,28 +63,8 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
       final emailVal = _emailController.text.trim();
       final usernameVal = _usernameController.text.trim();
       
-      final authResponse = await _authService.signUp(
-        email: emailVal,
-        password: _passwordController.text.trim(),
-        username: usernameVal,
-      );
-
-      final user = authResponse.user;
-      if (user != null) {
-        // Create user profile in the database immediately
-        await _userService.createUser(
-          userId: user.id,
-          username: usernameVal,
-          email: emailVal,
-        );
-      }
-
-      // Invalidate and refresh user state to populate providers immediately
-      ref.invalidate(userProvider);
-      ref.invalidate(blockedUrlsProvider);
-      ref.invalidate(scanLimitProvider);
-      ref.invalidate(subscriptionProvider);
-      await ref.read(userProvider.notifier).refreshUser();
+      // Perform client-side fake auth
+      ref.read(userProvider.notifier).login(emailVal, usernameVal.isNotEmpty ? usernameVal : emailVal.split('@').first);
 
       if (!mounted) return;
 
@@ -105,15 +80,10 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
 
       if (!mounted) return;
 
-      final description = kDebugMode
-          ? e.toString()
-          : 'Failed to create account. Please try again in a few moments.';
-
-      AlertService.showAlert(
+      AlertService.showError(
         context,
-        type: AlertType.error,
-        title: 'Signup Failed',
-        description: description,
+        e,
+        customTitle: 'Unable to create account',
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -544,20 +514,14 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
 }
 
 void _logSupabaseError(dynamic e, StackTrace stack) {
-  debugPrint('Supabase Error:');
-  if (e is AuthException) {
-    debugPrint('Status Code: ${e.statusCode}');
-    debugPrint('Code: ${e.code}');
-    debugPrint('Message: ${e.message}');
-    debugPrint('Details: null');
-    debugPrint('Hint: null');
-  } else if (e is PostgrestException) {
-    debugPrint('Code: ${e.code}');
-    debugPrint('Message: ${e.message}');
-    debugPrint('Details: ${e.details}');
-    debugPrint('Hint: ${e.hint}');
+  debugPrint('Auth Error:');
+  final errStr = e.toString();
+  if (errStr.contains('AuthException') || errStr.contains('AuthApiException')) {
+    debugPrint('Message: $errStr');
+  } else if (errStr.contains('PostgrestException')) {
+    debugPrint('Message: $errStr');
   } else {
-    debugPrint('Message: ${e.toString()}');
+    debugPrint('Message: $errStr');
   }
   debugPrint('Stack Trace:\n$stack');
 }
