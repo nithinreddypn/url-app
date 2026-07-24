@@ -1,15 +1,18 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/url_scan_service.dart';
 import '../services/blocked_url_service.dart';
 import '../models/url_scan_model.dart';
+import '../models/url_lookup_result.dart';
 import '../providers/app_providers.dart';
 import '../theme/app_theme.dart';
 import 'widgets/scan_limit_dialog.dart';
 import '../services/alert_service.dart';
+import '../services/api_client.dart';
 
 class ScanScreen extends ConsumerStatefulWidget {
   final String? initialUrl;
@@ -25,9 +28,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
   Color get _cardColor => context.cardBg;
   Color get _surfaceColor => context.border;
   Color get _primaryGreen => context.activeAccent;
-  Color get _amber =>
-      context.isDark ? Color(0xFFF59E0B) : Color(0xFFD97706);
-  Color get _red => context.isDark ? Color(0xFFEF4444) : Color(0xFFDC2626);
+  Color get _amber => context.warning;
+  Color get _red => context.danger;
   Color get _textPrimary => context.textPrimary;
   Color get _textMuted => context.textMuted;
 
@@ -40,9 +42,63 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
   bool _isBlocking = false;
   bool _isBlocked = false;
   UrlScanModel? _scanResult;
+  UrlLookupResult? _lookupResult;
+  Timer? _lookupDebounce;
+  Timer? _lookupProgressDelay;
+  int _lookupGeneration = 0;
+  bool _showLookupProgress = false;
+  bool _lookupFailed = false;
 
   Timer? _scanLogTimer;
   int _currentLogIndex = 0;
+
+  // Typing animation fields for hint text
+  Timer? _typingTimer;
+  String _hintText = 'Enter URL...';
+  final List<String> _hintKeywords = [
+    'https://google.com',
+    'https://github.com',
+    'https://paypal-security-login.com',
+    'https://malicious-link-reputation.net',
+  ];
+  int _keywordIndex = 0;
+  int _charIndex = 0;
+  bool _isErasing = false;
+
+  void _startHintTypingAnimation() {
+    _typingTimer = Timer.periodic(const Duration(milliseconds: 120), (timer) {
+      if (!mounted) return;
+      final currentWord = _hintKeywords[_keywordIndex];
+      setState(() {
+        if (!_isErasing) {
+          _hintText = 'e.g., ${currentWord.substring(0, _charIndex + 1)}';
+          _charIndex++;
+          if (_charIndex == currentWord.length) {
+            _isErasing = true;
+            timer.cancel();
+            Future.delayed(const Duration(milliseconds: 2000), () {
+              if (mounted) {
+                _startHintTypingAnimation();
+              }
+            });
+          }
+        } else {
+          _hintText = 'e.g., ${currentWord.substring(0, _charIndex - 1)}';
+          _charIndex--;
+          if (_charIndex == 0) {
+            _isErasing = false;
+            _keywordIndex = (_keywordIndex + 1) % _hintKeywords.length;
+            timer.cancel();
+            Future.delayed(const Duration(milliseconds: 600), () {
+              if (mounted) {
+                _startHintTypingAnimation();
+              }
+            });
+          }
+        }
+      });
+    });
+  }
 
   final List<String> _scanLogs = [
     'Connecting to VirusTotal secure gateways...',
@@ -92,11 +148,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
       duration: Duration(milliseconds: 150),
     );
     _buttonBounceAnimation = Tween<double>(begin: 1.0, end: 0.95).animate(
-      CurvedAnimation(
-        parent: _buttonBounceController,
-        curve: Curves.easeInOut,
-      ),
+      CurvedAnimation(parent: _buttonBounceController, curve: Curves.easeInOut),
     );
+
+    _startHintTypingAnimation();
 
     if (widget.initialUrl != null && widget.initialUrl!.isNotEmpty) {
       _urlController.text = widget.initialUrl!;
@@ -121,7 +176,11 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
 
   @override
   void dispose() {
+    _typingTimer?.cancel();
     _scanLogTimer?.cancel();
+    _lookupDebounce?.cancel();
+    _lookupProgressDelay?.cancel();
+    _scanService.dispose();
     _urlController.dispose();
     _resultAnimController.dispose();
     _pulseController.dispose();
@@ -129,6 +188,76 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
     _riskGaugeController.dispose();
     _buttonBounceController.dispose();
     super.dispose();
+  }
+
+  void _handleUrlChanged(String value) {
+    _lookupDebounce?.cancel();
+    _lookupProgressDelay?.cancel();
+    _scanService.cancelLookup();
+    final generation = ++_lookupGeneration;
+    setState(() {
+      _lookupResult = null;
+      _showLookupProgress = false;
+      _lookupFailed = false;
+      if (_hasResult) {
+        _hasResult = false;
+        _scanResult = null;
+      }
+    });
+    if (!_isValidLookupUrl(value)) return;
+    _lookupDebounce = Timer(const Duration(milliseconds: 400), () {
+      _runLookup(value.trim(), generation);
+    });
+  }
+
+  bool _isValidLookupUrl(String value) {
+    final input = value.trim();
+    if (input.isEmpty || input.length > 2048 || input.contains(' ')) {
+      return false;
+    }
+    final candidate =
+        input.startsWith('http://') || input.startsWith('https://')
+        ? input
+        : 'https://$input';
+    final uri = Uri.tryParse(candidate);
+    return uri != null &&
+        (uri.scheme == 'http' || uri.scheme == 'https') &&
+        uri.host.isNotEmpty &&
+        uri.userInfo.isEmpty;
+  }
+
+  Future<void> _runLookup(String url, int generation) async {
+    final userId = ref.read(userProvider)?.userId;
+    if (userId == null || !mounted || generation != _lookupGeneration) return;
+    _lookupProgressDelay = Timer(const Duration(milliseconds: 300), () {
+      if (mounted && generation == _lookupGeneration) {
+        setState(() => _showLookupProgress = true);
+      }
+    });
+    try {
+      final result = await _scanService.lookupUrl(userId: userId, url: url);
+      if (!mounted || generation != _lookupGeneration) return;
+      _lookupProgressDelay?.cancel();
+      setState(() {
+        _lookupResult = result;
+        _showLookupProgress = false;
+        _lookupFailed = false;
+      });
+    } catch (_) {
+      if (!mounted || generation != _lookupGeneration) return;
+      _lookupProgressDelay?.cancel();
+      setState(() {
+        _showLookupProgress = false;
+        _lookupFailed = true;
+      });
+    }
+  }
+
+  String _normalizeUrl(String url) {
+    var clean = url.trim().toLowerCase();
+    clean = clean.replaceFirst(RegExp(r'^https?://'), '');
+    clean = clean.replaceFirst(RegExp(r'/$'), '');
+    return clean;
   }
 
   Future<void> _performScan() async {
@@ -142,6 +271,37 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
     if (userId == null) {
       _showSnackBar('Please log in to scan URLs', isError: true);
       return;
+    }
+
+    // ─── Duplicate Scan Prevention Check ───
+    final cleanInput = _normalizeUrl(url);
+    try {
+      final recentScans = await _scanService.getRecentScans(userId: userId, limit: 10);
+      UrlScanModel? cachedScan;
+      for (final s in recentScans) {
+        if (_normalizeUrl(s.scannedUrl) == cleanInput) {
+          cachedScan = s;
+          break;
+        }
+      }
+      
+      final finalScan = cachedScan;
+      if (finalScan != null) {
+        _scanLogTimer?.cancel();
+        if (mounted) {
+          setState(() {
+            _urlController.text = finalScan.scannedUrl;
+            _scanResult = finalScan;
+            _isScanning = false;
+            _hasResult = true;
+          });
+          _resultAnimController.value = 1.0;
+          _riskGaugeController.value = 1.0;
+        }
+        return;
+      }
+    } catch (_) {
+      // Continue to fresh scan if cache check fails
     }
 
     _currentLogIndex = 0;
@@ -185,6 +345,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
         scannedUrl: url,
         userId: userId,
       );
+      _scanService.clearLookupCache();
 
       await ref.read(userProvider.notifier).refreshUser();
       ref.invalidate(scanLimitProvider);
@@ -206,9 +367,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
       _scanLogTimer?.cancel();
       if (!mounted) return;
       setState(() => _isScanning = false);
-      final errMsg = e.toString();
-      if (errMsg.contains('Free scan limit reached') ||
-          errMsg.contains('P0001')) {
+      if (e is ApiException && e.statusCode == 429) {
         showDialog(
           context: context,
           barrierDismissible: false,
@@ -260,6 +419,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
   }
 
   void _resetScan() {
+    _lookupDebounce?.cancel();
+    _lookupProgressDelay?.cancel();
+    _scanService.cancelLookup();
+    _lookupGeneration++;
     _resultAnimController.reset();
     _riskGaugeController.reset();
     setState(() {
@@ -267,6 +430,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
       _hasResult = false;
       _scanResult = null;
       _isBlocked = false;
+      _lookupResult = null;
+      _showLookupProgress = false;
+      _lookupFailed = false;
     });
   }
 
@@ -291,31 +457,37 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
             children: [
               Icon(Icons.warning_amber_rounded, color: _red, size: 28),
               SizedBox(width: 12),
-              Text('Security Warning',
-                  style: TextStyle(
-                      color: _textPrimary, fontWeight: FontWeight.bold)),
+              Text(
+                'Security Warning',
+                style: TextStyle(
+                  color: _textPrimary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ],
           ),
           content: Text(
             'This link is flagged as DANGEROUS (${_scanResult?.threatType ?? "malicious"}). Visiting this site may expose your device to security threats.',
             style: TextStyle(
-                color: Color(0xFF8E8E93), fontSize: 14, height: 1.4),
+              color: Color(0xFF8E8E93),
+              fontSize: 14,
+              height: 1.4,
+            ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: Text('Cancel',
-                  style: TextStyle(color: Color(0xFF8E8E93))),
+              child: Text('Cancel', style: TextStyle(color: Color(0xFF8E8E93))),
             ),
             ElevatedButton(
               onPressed: () => Navigator.pop(ctx, true),
               style: ElevatedButton.styleFrom(
                 backgroundColor: _red,
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
-              child:
-                  Text('Proceed', style: TextStyle(color: Colors.white)),
+              child: Text('Proceed', style: TextStyle(color: Colors.white)),
             ),
           ],
         ),
@@ -359,6 +531,631 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
     }
   }
 
+  String _getRelativeTime(DateTime? dateTime) {
+    if (dateTime == null) return 'just now';
+    final diff = DateTime.now().difference(dateTime);
+    if (diff.inMinutes < 1) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
+  }
+
+  Widget _buildRecentActivitySection() {
+    final recentScansAsync = ref.watch(recentScansProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 32),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.history_rounded,
+                  color: _primaryGreen.withValues(alpha: 0.8),
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Recent Activity',
+                  style: TextStyle(
+                    color: _textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+              ],
+            ),
+            TextButton(
+              onPressed: () {
+                ref.read(alertsTabProvider.notifier).state = 1;
+                ref.read(tabIndexProvider.notifier).state =
+                    2; // Navigate to History
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: _primaryGreen,
+                padding: EdgeInsets.zero,
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Row(
+                children: [
+                  Text(
+                    'See All',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  ),
+                  Icon(Icons.chevron_right_rounded, size: 16),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        recentScansAsync.when(
+          data: (scans) {
+            if (scans.isEmpty) {
+              return Container(
+                padding: const EdgeInsets.symmetric(
+                  vertical: 24,
+                  horizontal: 16,
+                ),
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: _cardColor,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: _surfaceColor.withValues(alpha: 0.08),
+                  ),
+                ),
+                child: Center(
+                  child: Text(
+                    'No recent scans found',
+                    style: TextStyle(
+                      color: _textMuted.withValues(alpha: 0.6),
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            return ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: scans.length,
+              separatorBuilder: (context, index) => const SizedBox(height: 12),
+              itemBuilder: (context, index) {
+                final scan = scans[index];
+                return _buildRecentScanCard(scan);
+              },
+            );
+          },
+          loading: () => const Center(
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          ),
+          error: (err, stack) => Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Text(
+                'Error loading recent activity',
+                style: TextStyle(color: _red, fontSize: 13),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRecentScanCard(UrlScanModel scan) {
+    final resultStr = scan.scanResult?.toLowerCase() ?? 'safe';
+    final isDangerous = resultStr == 'dangerous';
+    final isSuspicious = resultStr == 'suspicious';
+    final isPending = resultStr == 'pending';
+
+    Color statusColor = _primaryGreen;
+    IconData statusIcon = Icons.shield_rounded;
+    String statusText = 'Safe';
+
+    if (isDangerous) {
+      statusColor = _red;
+      statusIcon = Icons.gpp_bad_rounded;
+      statusText = 'Unsafe';
+    } else if (isSuspicious) {
+      statusColor = Colors.orange;
+      statusIcon = Icons.warning_amber_rounded;
+      statusText = 'Warning';
+    } else if (isPending) {
+      statusColor = Colors.grey;
+      statusIcon = Icons.hourglass_empty_rounded;
+      statusText = 'Pending';
+    }
+
+    // Extract domain name for a cleaner appearance
+    String domain = scan.scannedUrl;
+    try {
+      String cleanUrl = scan.scannedUrl.trim();
+      if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+        cleanUrl = 'https://$cleanUrl';
+      }
+      final uri = Uri.parse(cleanUrl);
+      domain = uri.host;
+      if (domain.isEmpty) domain = scan.scannedUrl;
+    } catch (_) {}
+
+    return GestureDetector(
+      onTap: () => _showScanDetails(scan),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: _cardColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isDangerous
+                ? _red.withValues(alpha: 0.2)
+                : _surfaceColor.withValues(alpha: 0.08),
+            width: isDangerous ? 1.5 : 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.02),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            // Status Icon with glowing circle backing
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: statusColor.withValues(alpha: 0.08),
+              ),
+              child: Icon(statusIcon, color: statusColor, size: 20),
+            ),
+            const SizedBox(width: 14),
+            // URL / Domain info
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    domain,
+                    style: TextStyle(
+                      color: _textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    scan.scannedUrl,
+                    style: TextStyle(color: _textMuted, fontSize: 11),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            // Right status badge or relative time
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    statusText,
+                    style: TextStyle(
+                      color: statusColor,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _getRelativeTime(scan.scannedAt),
+                  style: TextStyle(
+                    color: _textMuted.withValues(alpha: 0.6),
+                    fontSize: 10,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showScanDetails(UrlScanModel scan) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final resultStr = scan.scanResult?.toLowerCase() ?? 'safe';
+        final isSafe = resultStr == 'safe';
+        final isDangerous = resultStr == 'dangerous';
+        final isSuspicious = resultStr == 'suspicious';
+
+        Color statusColor = _primaryGreen;
+        IconData statusIcon = Icons.shield_rounded;
+        String statusTitle = 'This URL is Safe';
+        String statusDesc =
+            'No security engines detected malicious content or phishing threats on this link.';
+
+        if (isDangerous) {
+          statusColor = _red;
+          statusIcon = Icons.gpp_bad_rounded;
+          statusTitle = 'This URL is Dangerous';
+          statusDesc =
+              'Multiple security engines flagged this URL as a malware threat or phishing host.';
+        } else if (isSuspicious) {
+          statusColor = Colors.orange;
+          statusIcon = Icons.warning_amber_rounded;
+          statusTitle = 'This URL is Suspicious';
+          statusDesc =
+              'Some heuristic alerts or community reports suggested caution when visiting this link.';
+        }
+
+        return Container(
+          decoration: BoxDecoration(
+            color: isDark ? _bgColor : Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.15),
+                blurRadius: 20,
+                offset: const Offset(0, -4),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Pull bar indicator
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: _textMuted.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              // Header
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Scan Details',
+                      style: TextStyle(
+                        color: _textPrimary,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.close_rounded, color: _textMuted),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              // Status Panel
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: statusColor.withValues(alpha: 0.15),
+                    width: 1.5,
+                  ),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: statusColor.withValues(alpha: 0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(statusIcon, color: statusColor, size: 24),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            statusTitle,
+                            style: TextStyle(
+                              color: _textPrimary,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            statusDesc,
+                            style: TextStyle(
+                              color: _textMuted,
+                              fontSize: 12,
+                              height: 1.4,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              // Risk Score Progress
+              Text(
+                'Risk Score Analysis',
+                style: TextStyle(
+                  color: _textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: LinearProgressIndicator(
+                        value: (scan.riskScore ?? 0) / 100.0,
+                        backgroundColor: _surfaceColor.withValues(alpha: 0.1),
+                        valueColor: AlwaysStoppedAnimation<Color>(statusColor),
+                        minHeight: 8,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    '${scan.riskScore ?? 0}%',
+                    style: TextStyle(
+                      color: statusColor,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              // Metrics Grid
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildMetricCard(
+                      'VirusTotal Flags',
+                      '${scan.virusTotalFlags}',
+                      Icons.security_rounded,
+                      statusColor,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildMetricCard(
+                      'Heuristic Hits',
+                      '${scan.heuristicHits}',
+                      Icons.analytics_rounded,
+                      isSafe ? _textMuted : statusColor,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildMetricCard(
+                      'Community Reports',
+                      '${scan.communityReports}',
+                      Icons.people_alt_rounded,
+                      isSafe ? _textMuted : statusColor,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildMetricCard(
+                      'Threat Classification',
+                      scan.threatType ?? 'None',
+                      Icons.bug_report_rounded,
+                      isSafe ? _textMuted : statusColor,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              // Full URL Details
+              Text(
+                'Full URL Path',
+                style: TextStyle(
+                  color: _textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: _cardColor,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _surfaceColor.withValues(alpha: 0.1),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        scan.scannedUrl,
+                        style: TextStyle(
+                          color: _textPrimary,
+                          fontSize: 12,
+                          fontFamily: 'monospace',
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: Icon(
+                        Icons.copy_rounded,
+                        color: _textMuted,
+                        size: 18,
+                      ),
+                      onPressed: () {
+                        Clipboard.setData(ClipboardData(text: scan.scannedUrl));
+                        _showSnackBar('URL copied to clipboard');
+                      },
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 28),
+              // Bottom Action Buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _urlController.text = scan.scannedUrl;
+                        _performScan();
+                      },
+                      icon: const Icon(Icons.replay_rounded, size: 18),
+                      label: const Text('Re-run Scan'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _primaryGreen,
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _handleRedirect(scan.scannedUrl, isSafe);
+                      },
+                      icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                      label: const Text('Visit Link'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: _textPrimary,
+                        side: BorderSide(
+                          color: _textMuted.withValues(alpha: 0.3),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildMetricCard(
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _cardColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _surfaceColor.withValues(alpha: 0.08)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  value,
+                  style: TextStyle(
+                    color: _textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  label,
+                  style: TextStyle(color: _textMuted, fontSize: 10),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen<int>(tabIndexProvider, (previous, next) {
@@ -394,6 +1191,12 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                 _buildTitleSection(),
                 const SizedBox(height: 28),
                 _buildUrlInput(),
+                if (_showLookupProgress ||
+                    _lookupResult != null ||
+                    _lookupFailed) ...[
+                  const SizedBox(height: 16),
+                  _buildLookupState(),
+                ],
                 const SizedBox(height: 20),
                 _buildScanButton(),
                 const SizedBox(height: 28),
@@ -416,9 +1219,12 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                   child: _isScanning
                       ? _buildScanningIndicator()
                       : _hasResult && _scanResult != null
-                          ? _buildResultSection()
-                          : _buildIdleState(),
+                      ? _buildResultSection()
+                      : _lookupResult != null || _lookupFailed
+                      ? const SizedBox.shrink(key: ValueKey('lookup-state'))
+                      : _buildIdleState(),
                 ),
+                _buildRecentActivitySection(),
               ],
             ),
           ),
@@ -445,17 +1251,14 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                 boxShadow: [
                   BoxShadow(
                     color: _primaryGreen.withValues(
-                        alpha: 0.2 + (_pulseController.value * 0.15)),
+                      alpha: 0.2 + (_pulseController.value * 0.15),
+                    ),
                     blurRadius: 16 + (_pulseController.value * 8),
                     offset: Offset(0, 4),
                   ),
                 ],
               ),
-              child: Icon(
-                Icons.radar_rounded,
-                color: Colors.white,
-                size: 26,
-              ),
+              child: Icon(Icons.radar_rounded, color: Colors.white, size: 26),
             );
           },
         ),
@@ -508,7 +1311,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
         style: TextStyle(color: _textPrimary, fontSize: 15),
         keyboardType: TextInputType.url,
         decoration: InputDecoration(
-          hintText: 'Enter URL (e.g., https://example.com)',
+          hintText: _hintText,
           hintStyle: TextStyle(
             color: _textPrimary.withValues(alpha: 0.2),
             fontSize: 14,
@@ -530,41 +1333,339 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                   ),
                   onPressed: () {
                     _urlController.clear();
-                    setState(() {});
+                    _handleUrlChanged('');
                   },
                 )
               : null,
           filled: true,
           fillColor: _cardColor,
-          contentPadding:
-              EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+          contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 18),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(18),
-            borderSide: BorderSide(
-              color: _surfaceColor.withValues(alpha: 0.3),
-            ),
+            borderSide: BorderSide(color: _surfaceColor.withValues(alpha: 0.3)),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(18),
-            borderSide: BorderSide(
-              color: _surfaceColor.withValues(alpha: 0.3),
-            ),
+            borderSide: BorderSide(color: _surfaceColor.withValues(alpha: 0.3)),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(18),
-            borderSide: BorderSide(
-              color: _primaryGreen,
-              width: 1.5,
-            ),
+            borderSide: BorderSide(color: _primaryGreen, width: 1.5),
           ),
         ),
-        onChanged: (_) => setState(() {}),
+        onChanged: _handleUrlChanged,
         onSubmitted: (_) => _performScan(),
       ),
     );
   }
 
   // ──────────────────────────── Scan Button ────────────────────────────
+
+  Widget _buildLookupState() {
+    if (_showLookupProgress) {
+      return Container(
+        key: const ValueKey('lookup-progress'),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: _cardColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: _surfaceColor.withValues(alpha: 0.35)),
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: _primaryGreen,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Flexible(
+              child: Text(
+                'Checking URL Defender intelligence...',
+                style: TextStyle(color: _textMuted, fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    if (_lookupFailed) {
+      return _buildLookupMessage(
+        icon: Icons.cloud_off_rounded,
+        color: _textMuted,
+        title: 'Instant lookup unavailable',
+        message: 'You can still use Scan Now to analyze this URL.',
+      );
+    }
+
+    final result = _lookupResult;
+    final analysis = result?.analysis;
+    if (result == null) return const SizedBox.shrink();
+    if (!result.exists || analysis == null) {
+      return _buildLookupMessage(
+        icon: Icons.manage_search_rounded,
+        color: _textMuted,
+        title: 'No analysis available yet',
+        message: 'Tap Scan Now to analyze this URL.',
+      );
+    }
+
+    final status = analysis.status.toLowerCase();
+    final statusColor = switch (status) {
+      'safe' => _primaryGreen,
+      'suspicious' => _amber,
+      'dangerous' => _red,
+      _ => _textMuted,
+    };
+    final statusIcon = switch (status) {
+      'safe' => Icons.verified_user_rounded,
+      'suspicious' => Icons.warning_amber_rounded,
+      'dangerous' => Icons.gpp_bad_rounded,
+      _ => Icons.help_outline_rounded,
+    };
+
+    return Container(
+      key: ValueKey('lookup-${analysis.url}-$status'),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: statusColor.withValues(alpha: context.isDark ? 0.10 : 0.06),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: statusColor.withValues(alpha: 0.38)),
+        boxShadow: [
+          BoxShadow(
+            color: statusColor.withValues(alpha: 0.10),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(statusIcon, color: statusColor, size: 23),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Threat Intelligence Available',
+                      style: TextStyle(
+                        color: _textPrimary,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      analysis.url,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: _textMuted,
+                        fontSize: 12,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  status.toUpperCase(),
+                  style: TextStyle(
+                    color: statusColor,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final itemWidth = (constraints.maxWidth - 10) / 2;
+              return Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  _buildLookupMetric(
+                    'Risk Score',
+                    '${analysis.riskScore}/100',
+                    itemWidth,
+                  ),
+                  _buildLookupMetric('Category', analysis.category, itemWidth),
+                  _buildLookupMetric(
+                    'Threat Type',
+                    analysis.threatType ?? 'None detected',
+                    itemWidth,
+                  ),
+                  _buildLookupMetric(
+                    'SSL',
+                    _displayLookupValue(analysis.sslStatus),
+                    itemWidth,
+                  ),
+                  _buildLookupMetric(
+                    'Redirects',
+                    '${analysis.redirectCount}',
+                    itemWidth,
+                  ),
+                  _buildLookupMetric('Source', analysis.source, itemWidth),
+                ],
+              );
+            },
+          ),
+          if (result.alreadyInHistory) ...[
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Icon(Icons.history_rounded, color: statusColor, size: 17),
+                const SizedBox(width: 7),
+                Expanded(
+                  child: Text(
+                    'Already in Your Scan History · Last scanned ${_getRelativeTime(result.lastScanned)}',
+                    style: TextStyle(
+                      color: _textMuted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => _showScanDetails(
+                UrlScanModel(
+                  scanId: result.scanId ?? '',
+                  userId: ref.read(userProvider)?.userId,
+                  scannedUrl: analysis.url,
+                  scanResult: analysis.status,
+                  threatType: analysis.threatType,
+                  riskScore: analysis.riskScore,
+                  scannedAt: result.lastScanned,
+                ),
+              ),
+              icon: const Icon(Icons.open_in_new_rounded, size: 17),
+              label: const Text('View Details'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: statusColor,
+                side: BorderSide(color: statusColor.withValues(alpha: 0.45)),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLookupMessage({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String message,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _surfaceColor.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: _textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  message,
+                  style: TextStyle(color: _textMuted, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLookupMetric(String label, String value, double width) {
+    return SizedBox(
+      width: width,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: _cardColor.withValues(alpha: 0.78),
+          borderRadius: BorderRadius.circular(13),
+          border: Border.all(color: _surfaceColor.withValues(alpha: 0.25)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: TextStyle(color: _textMuted, fontSize: 10)),
+            const SizedBox(height: 3),
+            Text(
+              value,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: _textPrimary,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _displayLookupValue(String value) {
+    if (value.isEmpty) return 'Unknown';
+    return value[0].toUpperCase() + value.substring(1).replaceAll('_', ' ');
+  }
 
   Widget _buildScanButton() {
     return GestureDetector(
@@ -588,10 +1689,12 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
             gradient: _isScanning
-                ? LinearGradient(colors: [
-                    _primaryGreen.withValues(alpha: 0.4),
-                    Color(0xFF3ED65C).withValues(alpha: 0.4),
-                  ])
+                ? LinearGradient(
+                    colors: [
+                      _primaryGreen.withValues(alpha: 0.4),
+                      Color(0xFF3ED65C).withValues(alpha: 0.4),
+                    ],
+                  )
                 : LinearGradient(
                     colors: [_primaryGreen, Color(0xFF3ED65C)],
                     begin: Alignment.topLeft,
@@ -624,7 +1727,11 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                   Icon(Icons.shield_rounded, color: Colors.white, size: 22),
                 SizedBox(width: 12),
                 Text(
-                  _isScanning ? 'Scanning...' : 'Scan Now',
+                  _isScanning
+                      ? 'Scanning...'
+                      : _lookupResult?.exists == true
+                      ? 'Add to My History'
+                      : 'Scan Now',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 17,
@@ -715,7 +1822,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                           shape: BoxShape.circle,
                           border: Border.all(
                             color: _primaryGreen.withValues(
-                                alpha: 0.1 + (_pulseController.value * 0.15)),
+                              alpha: 0.1 + (_pulseController.value * 0.15),
+                            ),
                             width: 2,
                           ),
                         ),
@@ -732,9 +1840,13 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                         height: 90,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: _primaryGreen.withValues(alpha: 0.04 + (v * 0.04)),
+                          color: _primaryGreen.withValues(
+                            alpha: 0.04 + (v * 0.04),
+                          ),
                           border: Border.all(
-                            color: _primaryGreen.withValues(alpha: 0.15 + (v * 0.1)),
+                            color: _primaryGreen.withValues(
+                              alpha: 0.15 + (v * 0.1),
+                            ),
                             width: 1.5,
                           ),
                         ),
@@ -749,9 +1861,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                         angle: _radarSweepController.value * 2 * math.pi,
                         child: CustomPaint(
                           size: Size(100, 100),
-                          painter: _RadarSweepPainter(
-                            color: _primaryGreen,
-                          ),
+                          painter: _RadarSweepPainter(color: _primaryGreen),
                         ),
                       );
                     },
@@ -762,10 +1872,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: LinearGradient(
-                        colors: [
-                          _primaryGreen,
-                          Color(0xFF3ED65C),
-                        ],
+                        colors: [_primaryGreen, Color(0xFF3ED65C)],
                       ),
                       boxShadow: [
                         BoxShadow(
@@ -833,7 +1940,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                         height: 6,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: _primaryGreen.withValues(alpha: 0.3 + (v * 0.7)),
+                          color: _primaryGreen.withValues(
+                            alpha: 0.3 + (v * 0.7),
+                          ),
                         ),
                       );
                     }),
@@ -926,10 +2035,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                         duration: Duration(milliseconds: 700),
                         curve: Curves.elasticOut,
                         builder: (context, value, child) {
-                          return Transform.scale(
-                            scale: value,
-                            child: child,
-                          );
+                          return Transform.scale(scale: value, child: child);
                         },
                         child: SizedBox(
                           width: 88,
@@ -967,7 +2073,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                                   ),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: statusColor.withValues(alpha: 0.25),
+                                      color: statusColor.withValues(
+                                        alpha: 0.25,
+                                      ),
                                       blurRadius: 24,
                                     ),
                                   ],
@@ -1026,7 +2134,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                               SizedBox(height: 10),
                               Container(
                                 padding: EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 5),
+                                  horizontal: 12,
+                                  vertical: 5,
+                                ),
                                 decoration: BoxDecoration(
                                   color: _red.withValues(alpha: 0.08),
                                   borderRadius: BorderRadius.circular(20),
@@ -1084,8 +2194,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                               size: Size(180, 120),
                               painter: _RiskArcPainter(
                                 progress: animatedProgress,
-                                trackColor:
-                                    _surfaceColor.withValues(alpha: 0.15),
+                                trackColor: _surfaceColor.withValues(
+                                  alpha: 0.15,
+                                ),
                                 fillColor: riskColor,
                                 glowColor: riskColor.withValues(alpha: 0.3),
                               ),
@@ -1189,8 +2300,11 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                             color: statusColor.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(6),
                           ),
-                          child: Icon(Icons.link_rounded,
-                              size: 14, color: statusColor.withValues(alpha: 0.7)),
+                          child: Icon(
+                            Icons.link_rounded,
+                            size: 14,
+                            color: statusColor.withValues(alpha: 0.7),
+                          ),
                         ),
                         SizedBox(width: 10),
                         Expanded(
@@ -1216,9 +2330,11 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.verified_outlined,
-                          size: 11,
-                          color: _textPrimary.withValues(alpha: 0.2)),
+                      Icon(
+                        Icons.verified_outlined,
+                        size: 11,
+                        color: _textPrimary.withValues(alpha: 0.2),
+                      ),
                       SizedBox(width: 4),
                       Text(
                         'Powered by VirusTotal',
@@ -1284,8 +2400,11 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                             color: _primaryGreen.withValues(alpha: 0.15),
                             shape: BoxShape.circle,
                           ),
-                          child: Icon(Icons.check_rounded,
-                              color: _primaryGreen, size: 16),
+                          child: Icon(
+                            Icons.check_rounded,
+                            color: _primaryGreen,
+                            size: 16,
+                          ),
                         ),
                         SizedBox(width: 10),
                         Text(
@@ -1305,7 +2424,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                 // ─── Redirect ───
                 _buildPremiumButton(
                   label: 'Visit This Link',
-                  subtitle: isSafe ? 'Open in browser' : 'Proceed at your own risk',
+                  subtitle: isSafe
+                      ? 'Open in browser'
+                      : 'Proceed at your own risk',
                   icon: Icons.open_in_new_rounded,
                   gradientColors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
                   onTap: () => _handleRedirect(scan.scannedUrl, isSafe),
@@ -1460,9 +2581,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: color.withValues(alpha: 0.12),
-        ),
+        border: Border.all(color: color.withValues(alpha: 0.12)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1598,16 +2717,8 @@ class _RiskArcPainter extends CustomPainter {
         center.dx + radius * math.cos(endAngle),
         center.dy + radius * math.sin(endAngle),
       );
-      canvas.drawCircle(
-        dotCenter,
-        6,
-        Paint()..color = fillColor,
-      );
-      canvas.drawCircle(
-        dotCenter,
-        3,
-        Paint()..color = Colors.white,
-      );
+      canvas.drawCircle(dotCenter, 6, Paint()..color = fillColor);
+      canvas.drawCircle(dotCenter, 3, Paint()..color = Colors.white);
     }
   }
 

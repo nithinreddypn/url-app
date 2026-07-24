@@ -1,22 +1,25 @@
-import 'url_scan_service.dart';
+import 'api_client.dart';
+import '../models/api_value_parser.dart';
 
 class ScanLimitService {
-  /// Count how many scans the user has performed this week (mocked as 0 for local simple usage).
+  ScanLimitService({ApiClient? client}) : _client = client ?? ApiClient();
+
+  final ApiClient _client;
+
   Future<int> getWeeklyScansCount(String userId) async {
-    return 0;
+    final usage = await _client.get('usage');
+    return apiInt(usage['scans_used']);
   }
 
-  /// Determine if the user is allowed to perform a URL scan.
-  /// Allowed if user has completed < 50 lifetime scans.
   Future<bool> canUserScan(String userId) async {
-    final scanCount = UrlScanService.getLocalScansCount(userId);
-    return scanCount < 50;
+    final usage = await _client.get('usage');
+    final remaining = usage['scans_remaining'];
+    return remaining == null || apiInt(remaining) > 0;
   }
 
-  /// Calculates the remaining scans for a free user based on the 50 limit.
   Future<int> getRemainingScans(String userId) async {
-    final scanCount = UrlScanService.getLocalScansCount(userId);
-    final remaining = 50 - scanCount;
-    return remaining.clamp(0, 50);
+    final usage = await _client.get('usage');
+    final remaining = usage['scans_remaining'];
+    return apiInt(remaining);
   }
 }

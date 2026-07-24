@@ -1,127 +1,249 @@
-import '../models/community_threat_model.dart';
+import 'api_client.dart';
 
 class CommunityThreatService {
-  static final List<CommunityThreatModel> _localThreats = [
-    CommunityThreatModel(
-      threatId: 'threat_1',
-      threatName: 'PayPal Credential Harvester',
-      threatType: 'phishing',
-      description: 'Spoofed PayPal login page attempting to capture credentials and credit card details.',
-      severity: 'critical',
-      reportedBy: 'Nexabot',
-      url: 'http://paypal-verification-secure.com/login',
-      reportCount: 15,
-      reportedAt: DateTime.now().subtract(const Duration(hours: 4)),
-    ),
-    CommunityThreatModel(
-      threatId: 'threat_2',
-      threatName: 'Ransomware Dropper Script',
-      threatType: 'malware',
-      description: 'Host serving a malicious JS file that executes a silent drive-by download of LockBit payload.',
-      severity: 'critical',
-      reportedBy: 'Defender',
-      url: 'http://cdn-update-java.net/patch.js',
-      reportCount: 22,
-      reportedAt: DateTime.now().subtract(const Duration(days: 1)),
-    ),
-    CommunityThreatModel(
-      threatId: 'threat_3',
-      threatName: 'Fake Amazon Gift Card Hub',
-      threatType: 'scam',
-      description: 'Interactive survey scam promising \$1000 gift cards to extract personal phone numbers.',
-      severity: 'medium',
-      reportedBy: 'SafetyAgent',
-      url: 'http://amazon-survey-rewards.xyz/claim',
-      reportCount: 8,
-      reportedAt: DateTime.now().subtract(const Duration(days: 3)),
-    ),
-  ];
+  CommunityThreatService({ApiClient? client}) : _client = client ?? ApiClient();
 
-  /// Fetch all community-reported threats.
-  Future<List<CommunityThreatModel>> getThreats({int limit = 50}) async {
-    return _localThreats.take(limit).toList();
+  final ApiClient _client;
+
+  /// Fetch all trending threat reports.
+  Future<List<Map<String, dynamic>>> getTrending() async {
+    try {
+      final res = await _client.get('community-reports/trending');
+      final list = res['items'] as List?;
+      return list?.map((item) => Map<String, dynamic>.from(item as Map)).toList() ?? [];
+    } catch (_) {
+      return [];
+    }
   }
 
-  /// Report a new community threat.
-  Future<CommunityThreatModel> reportThreat({
-    String? threatName,
-    String? threatType,
-    String? description,
-    String? severity,
-    String? reportedBy,
-    String? url,
+  /// Fetch all top threat reports.
+  Future<List<Map<String, dynamic>>> getTop() async {
+    try {
+      final res = await _client.get('community-reports/top');
+      final list = res['items'] as List?;
+      return list?.map((item) => Map<String, dynamic>.from(item as Map)).toList() ?? [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Fetch verified community reports.
+  Future<List<Map<String, dynamic>>> getVerified() async {
+    try {
+      final res = await _client.get('community-reports/verified');
+      final list = res['items'] as List?;
+      return list?.map((item) => Map<String, dynamic>.from(item as Map)).toList() ?? [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Fetch categories list.
+  Future<List<Map<String, dynamic>>> getCategories() async {
+    try {
+      final res = await _client.get('community-reports/categories');
+      final list = res['items'] as List?;
+      return list?.map((item) => Map<String, dynamic>.from(item as Map)).toList() ?? [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Check reporting status of a URL.
+  Future<Map<String, dynamic>> checkStatus(String url) async {
+    try {
+      final res = await _client.get('community-reports/status?url=${Uri.encodeComponent(url)}');
+      return res;
+    } catch (_) {
+      return {'status': 'clean', 'data': null};
+    }
+  }
+
+  /// Submit a new threat report.
+  Future<void> submitReport({
+    required String url,
+    required String category,
+    required String description,
+    String? screenshotBase64,
   }) async {
-    final newThreat = CommunityThreatModel(
-      threatId: DateTime.now().millisecondsSinceEpoch.toString(),
-      threatName: threatName ?? 'Reported Threat',
-      threatType: threatType ?? 'suspicious',
-      description: description ?? 'Reported by user',
-      severity: severity ?? 'medium',
-      reportedBy: reportedBy ?? 'Guest',
-      url: url ?? '',
-      reportCount: 1,
-      reportedAt: DateTime.now(),
+    await _client.post(
+      'community-reports',
+      body: {
+        'url': url,
+        'threat_category': category,
+        'description': description,
+        'screenshot_base64': screenshotBase64 ?? '',
+      },
     );
-    _localThreats.insert(0, newThreat);
-    return newThreat;
   }
 
-  /// Get a threat by its URL (unique constraint).
-  Future<CommunityThreatModel?> getThreatByUrl(String url) async {
+  /// Vote confirm_threat or looks_safe on a report.
+  Future<void> submitVote({
+    required String reportId,
+    required String voteType,
+  }) async {
+    if (reportId.trim().isEmpty) {
+      throw const ApiException(
+        422,
+        ApiFailureKind.validation,
+        safeMessage: 'Invalid Report ID. You cannot vote on this item.',
+      );
+    }
+    if (voteType != 'confirm_threat' && voteType != 'looks_safe') {
+      throw const ApiException(
+        422,
+        ApiFailureKind.validation,
+        safeMessage: 'Invalid Vote Type.',
+      );
+    }
+    await _client.post(
+      'community-reports/vote',
+      body: {
+        'report_id': reportId,
+        'vote_type': voteType,
+      },
+    );
+  }
+
+  /// Fetch reports for the admin review queue.
+  Future<List<Map<String, dynamic>>> getAdminReports(String tab) async {
     try {
-      return _localThreats.firstWhere((threat) => threat.url == url);
+      final res = await _client.get('admin/community-reports?tab=$tab');
+      final list = res['items'] as List?;
+      return list?.map((item) => Map<String, dynamic>.from(item as Map)).toList() ?? [];
     } catch (_) {
-      return null;
+      return [];
     }
   }
 
-  /// Get a threat by its ID.
-  Future<CommunityThreatModel?> getThreatById(String threatId) async {
+  /// Approve report.
+  Future<void> approveReport(String reportId) async {
+    await _client.post('admin/community-reports/$reportId/approve');
+  }
+
+  /// Reject report.
+  Future<void> rejectReport(String reportId) async {
+    await _client.post('admin/community-reports/$reportId/reject');
+  }
+
+  /// Block reporter.
+  Future<void> blockReporter(String userId) async {
+    await _client.post('admin/reporters/$userId/block');
+  }
+
+  /// Get the current user's reporter reputation.
+  Future<Map<String, dynamic>> getMyReputation() async {
     try {
-      return _localThreats.firstWhere((threat) => threat.threatId == threatId);
+      return await _client.get('community-reports/my-reputation');
     } catch (_) {
-      return null;
+      return {
+        'trust_score': 50,
+        'badge': 'Newcomer',
+        'approved_reports': 0,
+        'rejected_reports': 0,
+        'false_reports': 0,
+        'total_reports_submitted': 0,
+        'total_votes_cast': 0,
+      };
     }
   }
 
-  /// Increment the report count for an existing threat.
-  Future<CommunityThreatModel> incrementReportCount(String threatId) async {
-    final threatIdx = _localThreats.indexWhere((t) => t.threatId == threatId);
-    if (threatIdx == -1) throw Exception('Threat not found');
-
-    final threat = _localThreats[threatIdx];
-    final updated = CommunityThreatModel(
-      threatId: threat.threatId,
-      threatName: threat.threatName,
-      threatType: threat.threatType,
-      description: threat.description,
-      severity: threat.severity,
-      reportedBy: threat.reportedBy,
-      url: threat.url,
-      reportCount: threat.reportCount + 1,
-      reportedAt: threat.reportedAt,
-    );
-    _localThreats[threatIdx] = updated;
-    return updated;
+  /// Get the current user's own reports with timeline.
+  Future<List<Map<String, dynamic>>> getMyReports() async {
+    try {
+      final result = await _client.get('community-reports/my-reports');
+      return List<Map<String, dynamic>>.from(result['items'] ?? []);
+    } catch (_) {
+      return [];
+    }
   }
 
-  /// Get threats filtered by severity (e.g., 'critical', 'high', 'medium', 'low').
-  Future<List<CommunityThreatModel>> getThreatsBySeverity(String severity) async {
-    return _localThreats.where((t) => t.severity == severity).toList();
+  /// Get detailed report view with timeline, votes, sources.
+  Future<Map<String, dynamic>> getReportDetail(String reportId) async {
+    final result = await _client.get('community-reports/$reportId/detail');
+    return Map<String, dynamic>.from(result['report'] ?? {});
   }
 
-  /// Get threats filtered by type (e.g., 'phishing', 'malware').
-  Future<List<CommunityThreatModel>> getThreatsByType(String type) async {
-    return _localThreats.where((t) => t.threatType == type).toList();
+  /// Get latest community reports.
+  Future<List<Map<String, dynamic>>> getLatestReports() async {
+    try {
+      final result = await _client.get('community-reports/latest');
+      return List<Map<String, dynamic>>.from(result['items'] ?? []);
+    } catch (_) {
+      return [];
+    }
   }
 
-  /// Delete a threat by its ID.
-  Future<void> deleteThreat(String threatId) async {
-    _localThreats.removeWhere((t) => t.threatId == threatId);
+  /// Get threat intelligence feed.
+  Future<List<Map<String, dynamic>>> getFeed() async {
+    try {
+      final result = await _client.get('community-reports/feed');
+      return List<Map<String, dynamic>>.from(result['items'] ?? []);
+    } catch (_) {
+      return [];
+    }
   }
 
-  /// Listen to real-time threat updates.
-  Stream<List<Map<String, dynamic>>> onThreatUpdates() {
-    return Stream.value(_localThreats.map((t) => t.toJson()).toList());
+  /// Get community alerts.
+  Future<List<Map<String, dynamic>>> getAlerts() async {
+    try {
+      final result = await _client.get('community-reports/alerts');
+      return List<Map<String, dynamic>>.from(result['items'] ?? []);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Get pending verification reports.
+  Future<List<Map<String, dynamic>>> getPendingReports() async {
+    try {
+      final result = await _client.get('community-reports/pending');
+      return List<Map<String, dynamic>>.from(result['items'] ?? []);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Get most reported URLs.
+  Future<List<Map<String, dynamic>>> getMostReported() async {
+    try {
+      final result = await _client.get('community-reports/most-reported');
+      return List<Map<String, dynamic>>.from(result['items'] ?? []);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Get recently verified (approved) reports.
+  Future<List<Map<String, dynamic>>> getRecentlyVerified() async {
+    try {
+      final result = await _client.get('community-reports/recently-verified');
+      return List<Map<String, dynamic>>.from(result['items'] ?? []);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Get community statistics.
+  Future<Map<String, dynamic>> getCommunityStats() async {
+    try {
+      return await _client.get('community-reports/stats');
+    } catch (_) {
+      return {
+        'total_reports': 0,
+        'verified_count': 0,
+        'pending_count': 0,
+        'rejected_count': 0,
+        'active_reporters': 0,
+        'avg_confidence': 0.0,
+        'total_votes': 0,
+        'category_breakdown': [],
+      };
+    }
+  }
+
+  /// Merge a duplicate report into a primary target report.
+  Future<void> mergeReport({required String reportId, required String targetId}) async {
+    await _client.post('admin/community-reports/$reportId/merge', body: {'target_id': targetId});
   }
 }

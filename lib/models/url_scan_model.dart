@@ -1,3 +1,5 @@
+import 'api_value_parser.dart';
+
 class UrlScanModel {
   final String scanId;
   final String? userId;
@@ -23,33 +25,26 @@ class UrlScanModel {
     this.communityReports = 0,
   });
 
-  static DateTime _parseUtc(String dateStr) {
-    // Supabase returns naive timestamps like '2026-06-25 07:54:54.39986'
-    // without timezone info. We need to treat them as UTC.
-    final hasTimezone = dateStr.endsWith('Z') ||
-        RegExp(r'[+-]\d{2}:\d{2}$').hasMatch(dateStr) ||
-        RegExp(r'[+-]\d{4}$').hasMatch(dateStr);
-    if (!hasTimezone) {
-      final normalized = dateStr.replaceAll(' ', 'T');
-      return DateTime.parse('${normalized}Z').toLocal();
-    }
-    return DateTime.parse(dateStr).toLocal();
-  }
-
   factory UrlScanModel.fromJson(Map<String, dynamic> json) {
     return UrlScanModel(
-      scanId: (json['scan_id'] ?? json['id']) as String? ?? DateTime.now().millisecondsSinceEpoch.toString(),
-      userId: json['user_id'] as String?,
-      scannedUrl: json['scanned_url'] as String? ?? '',
-      scanResult: json['scan_result'] as String? ?? 'safe',
-      threatType: json['threat_type'] as String?,
-      riskScore: json['risk_score'] as int? ?? 0,
-      scannedAt: json['scanned_at'] != null
-          ? _parseUtc(json['scanned_at'] as String)
-          : null,
-      virusTotalFlags: json['virus_total_flags'] as int? ?? 0,
-      heuristicHits: json['heuristic_hits'] as int? ?? 0,
-      communityReports: json['community_reports'] as int? ?? 0,
+      scanId: apiString(
+        json['scan_id'] ?? json['id'],
+        fallback: DateTime.now().millisecondsSinceEpoch.toString(),
+      ),
+      userId: apiNullableString(json['user_id']),
+      scannedUrl: apiString(json['scanned_url'] ?? json['url']),
+      scanResult: apiString(
+        json['scan_result'] ?? json['verdict'],
+        fallback: 'pending',
+      ),
+      threatType: apiNullableString(
+        json['threat_type'] ?? json['threat_category'],
+      ),
+      riskScore: apiInt(json['risk_score']),
+      scannedAt: apiDateTime(json['scanned_at'] ?? json['created_at']),
+      virusTotalFlags: apiInt(json['virus_total_flags']),
+      heuristicHits: apiInt(json['heuristic_hits']),
+      communityReports: apiInt(json['community_reports']),
     );
   }
 

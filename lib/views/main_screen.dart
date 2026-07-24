@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/app_providers.dart';
+import '../services/deep_link_service.dart';
 import 'home_screen.dart';
 import 'scan_screen.dart';
 import 'alerts_screen.dart';
+import 'community_reports_page.dart';
 import 'settings_screen.dart';
 import 'widgets/custom_bottom_nav_bar.dart';
 
@@ -20,6 +22,24 @@ class _MainScreenState extends ConsumerState<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tabIndex = ref.watch(tabIndexProvider);
+    final deepLinkUrl = ref.watch(deepLinkUrlProvider);
+
+    if (tabIndex != currentIndex) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        setState(() {
+          currentIndex = tabIndex;
+        });
+      });
+    }
+
+    if (deepLinkUrl != null) {
+      _pendingUrlForScan = deepLinkUrl;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(deepLinkUrlProvider.notifier).state = null;
+      });
+    }
+
     return Scaffold(
       extendBody: true, // Content flows behind the floating nav bar
       body: IndexedStack(

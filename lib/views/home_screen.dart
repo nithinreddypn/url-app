@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -11,6 +12,7 @@ import '../models/user_model.dart';
 import '../models/plan_model.dart';
 import '../providers/app_providers.dart';
 import '../theme/app_theme.dart';
+import '../widgets/app/notification_bell.dart';
 import 'premium_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -29,19 +31,21 @@ class HomeScreen extends ConsumerStatefulWidget {
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStateMixin {
+class _HomeScreenState extends ConsumerState<HomeScreen>
+    with TickerProviderStateMixin {
   Color get _bgColor => context.bg;
   Color get _cardColor => context.cardBg;
   Color get _surfaceColor => context.border;
   Color get _primaryGreen => context.activeAccent;
-  Color get _amber => context.isDark ? const Color(0xFFF59E0B) : const Color(0xFFD97706);
-  Color get _red => context.isDark ? const Color(0xFFEF4444) : const Color(0xFFDC2626);
+  Color get _amber => context.warning;
+  Color get _red => context.danger;
   Color get _textPrimary => context.textPrimary;
   Color get _textSecondary => context.textSecondary;
   Color get _textMuted => context.textMuted;
 
   // Header background: Deep teal/green in light mode, Dark charcoal in dark mode
-  Color get _headerBgColor => context.isDark ? const Color(0xFF1E1E1E) : const Color(0xFF0B4C44);
+  Color get _headerBgColor =>
+      context.isDark ? const Color(0xFF1E1E1E) : const Color(0xFF0B4C44);
 
   final _scanService = UrlScanService();
 
@@ -99,7 +103,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
   }
 
   void _onAvatarTap() {
-    widget.onNavigateToSettings?.call();
+    context.push('/profile');
   }
 
   Future<void> _loadDashboardData() async {
@@ -124,7 +128,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
       _fadeController.forward();
     }
   }
-
 
   String _timeAgo(DateTime? dateTime) {
     if (dateTime == null) return '';
@@ -237,7 +240,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
     );
   }
 
-  Widget _shimmerBox({double? width, double height = 20, bool isHeader = false}) {
+  Widget _shimmerBox({
+    double? width,
+    double height = 20,
+    bool isHeader = false,
+  }) {
     final baseColor = isHeader
         ? Colors.white.withValues(alpha: 0.12)
         : _cardColor;
@@ -267,32 +274,64 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
   void _showQuickNavSheet(BuildContext ctx) {
     final isDark = ctx.isDark;
     final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    final textPrimary = isDark ? Colors.white : const Color(0xFF1A1A2E);
-    final textSecondary = isDark ? const Color(0xFF8E8E93) : const Color(0xFF475569);
-    final borderColor = isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFE2E8F0);
-    final primaryGreen = const Color(0xFF1A7A3A);
+    final textPrimary = context.textPrimary;
+    final textSecondary = context.textSecondary;
+    final borderColor = context.border;
+    final primaryGreen = context.activeAccent;
 
     final navItems = [
-      _NavItem('Quick Scan', 'Scan any URL for threats', Icons.qr_code_scanner_rounded, primaryGreen, () {
-        Navigator.pop(ctx);
-        widget.onNavigateToScan?.call();
-      }),
-      _NavItem('Threat Alerts', 'View dangerous URL detections', Icons.notifications_active_outlined, const Color(0xFFF59E0B), () {
-        Navigator.pop(ctx);
-        widget.onNavigateToAlerts?.call();
-      }),
-      _NavItem('Scan History', 'Browse all previous scans', Icons.history_rounded, const Color(0xFF6366F1), () {
-        Navigator.pop(ctx);
-        ctx.push('/history');
-      }),
-      _NavItem('Blocked URLs', 'Manage blocked domains', Icons.block_rounded, const Color(0xFFEF4444), () {
-        Navigator.pop(ctx);
-        ctx.push('/blocked_list');
-      }),
-      _NavItem('Settings', 'App preferences & profile', Icons.settings_rounded, const Color(0xFF8B5CF6), () {
-        Navigator.pop(ctx);
-        widget.onNavigateToSettings?.call();
-      }),
+      _NavItem(
+        'Quick Scan',
+        'Scan any URL for threats',
+        Icons.qr_code_scanner_rounded,
+        primaryGreen,
+        () {
+          Navigator.pop(ctx);
+          widget.onNavigateToScan?.call();
+        },
+      ),
+      _NavItem(
+        'Threat Alerts',
+        'View dangerous URL detections',
+        Icons.notifications_active_outlined,
+        context.warning,
+        () {
+          Navigator.pop(ctx);
+          ref.read(alertsTabProvider.notifier).state = 0;
+          widget.onNavigateToAlerts?.call();
+        },
+      ),
+      _NavItem(
+        'Scan History',
+        'Browse all previous scans',
+        Icons.history_rounded,
+        context.information,
+        () {
+          Navigator.pop(ctx);
+          ref.read(alertsTabProvider.notifier).state = 1;
+          widget.onNavigateToAlerts?.call();
+        },
+      ),
+      _NavItem(
+        'Blocked URLs',
+        'Manage blocked domains',
+        Icons.block_rounded,
+        const Color(0xFFEF4444),
+        () {
+          Navigator.pop(ctx);
+          ctx.push('/blocked_list');
+        },
+      ),
+      _NavItem(
+        'Settings',
+        'App preferences & profile',
+        Icons.settings_rounded,
+        const Color(0xFF8B5CF6),
+        () {
+          Navigator.pop(ctx);
+          widget.onNavigateToSettings?.call();
+        },
+      ),
     ];
 
     showModalBottomSheet(
@@ -345,7 +384,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                 ),
               ),
               const SizedBox(height: 4),
-              ...navItems.map((item) => _buildNavTile(item, textPrimary, textSecondary, borderColor)),
+              ...navItems.map(
+                (item) => _buildNavTile(
+                  item,
+                  textPrimary,
+                  textSecondary,
+                  borderColor,
+                ),
+              ),
               const SizedBox(height: 16),
             ],
           ),
@@ -354,7 +400,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
     );
   }
 
-  Widget _buildNavTile(_NavItem item, Color textPrimary, Color textSecondary, Color borderColor) {
+  Widget _buildNavTile(
+    _NavItem item,
+    Color textPrimary,
+    Color textSecondary,
+    Color borderColor,
+  ) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -414,111 +465,193 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
     return FadeTransition(
       opacity: _fadeAnimation,
       child: ListView(
-        padding: EdgeInsets.zero,
+        padding: const EdgeInsets.fromLTRB(24, 56, 24, 126),
         children: [
           _buildHeroHeader(),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 24, 20, 120),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildQuickToolsSection(),
-                const SizedBox(height: 32),
-                _buildRecentScansSection(),
-              ],
-            ),
-          ),
+          const SizedBox(height: 24),
+          _buildQuickToolsSection(),
+          const SizedBox(height: 24),
+          _buildRecentScansSection(),
         ],
       ),
     );
   }
 
   Widget _buildHeroHeader() {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: _headerBgColor,
-        borderRadius: const BorderRadius.only(
-          bottomLeft: Radius.circular(32),
-          bottomRight: Radius.circular(32),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.15),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.fromLTRB(20, 60, 20, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Consumer(
-            builder: (context, ref, child) {
-              final user = ref.watch(userProvider);
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  _UserAvatar(
-                    user: user,
-                    onTap: _onAvatarTap,
-                    getAvatarInitial: _getAvatarInitial,
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _getTimeBasedGreeting(),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.5,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _getFirstName(user).toUpperCase(),
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.75),
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Consumer(
+          builder: (context, ref, child) {
+            final user = ref.watch(userProvider);
+            final displayName = user?.username.trim() ?? 'Nexabot';
+            final rawFirstName = displayName.split(' ').first;
+            String firstName = '';
+            if (rawFirstName.isNotEmpty) {
+              firstName = rawFirstName[0].toUpperCase() + rawFirstName.substring(1).toLowerCase();
+            }
+            firstName = '$firstName..';
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    _HeaderIconButton(
+                      icon: Icons.menu_rounded,
+                      onTap: () => _showQuickNavSheet(context),
                     ),
+                    const Spacer(),
+                    const NotificationBell(),
+                    const SizedBox(width: 12),
+                    _UserAvatar(
+                      user: user,
+                      onTap: _onAvatarTap,
+                      getAvatarInitial: _getAvatarInitial,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  _getTimeBasedGreeting(),
+                  style: TextStyle(
+                    color: _textSecondary,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: -0.5,
                   ),
-                  _NotificationButton(
-                    onTap: widget.onNavigateToAlerts,
-                    hasBadge: _hasUnreadNotifications,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  firstName,
+                  style: TextStyle(
+                    color: _textPrimary,
+                    fontSize: 36,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -1.0,
                   ),
-                ],
-              );
-            },
-          ),
-          const SizedBox(height: 24),
-          _AnimatedSearchBar(
-            isDark: context.isDark,
-            onTap: () => _showQuickNavSheet(context),
-          ),
-          const SizedBox(height: 24),
-          const SubscriptionDashboardCard(),
-        ],
-      ),
+                ),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: 18),
+        _AnimatedSearchBar(
+          isDark: context.isDark,
+          onTap: () => _showQuickNavSheet(context),
+        ),
+        const SizedBox(height: 18),
+        const _DashboardSecurityCard(),
+      ],
     );
   }
 
   Widget _buildQuickToolsSection() {
+    final isDark = context.isDark;
+
+    Widget toolsContent;
+    if (isDark) {
+      // Dark Mode Layout: Stacked vertically
+      toolsContent = Column(
+        children: [
+          _QuickToolCard(
+            title: 'Quick Scan',
+            icon: Icons.qr_code_scanner_rounded,
+            iconBg: _primaryGreen.withValues(alpha: 0.12),
+            iconColor: _primaryGreen,
+            onTap: () => widget.onNavigateToScan?.call(),
+          ),
+          const SizedBox(height: 12),
+          _QuickToolCard(
+            title: 'Threat Alerts',
+            icon: Icons.notifications_active_outlined,
+            iconBg: _amber.withValues(alpha: 0.12),
+            iconColor: _amber,
+            onTap: () {
+              ref.read(alertsTabProvider.notifier).state = 0;
+              widget.onNavigateToAlerts?.call();
+            },
+          ),
+          const SizedBox(height: 12),
+          _QuickToolCard(
+            title: 'Blocked List',
+            icon: Icons.block_rounded,
+            iconBg: _red.withValues(alpha: 0.12),
+            iconColor: _red,
+            onTap: () => context.push('/blocked_list'),
+          ),
+          const SizedBox(height: 12),
+          _QuickToolCard(
+            title: 'Community Threats',
+            icon: Icons.public_outlined,
+            iconBg: Colors.teal.withValues(alpha: 0.12),
+            iconColor: Colors.teal,
+            onTap: () => context.push('/community-reports'),
+          ),
+        ],
+      );
+    } else {
+      // Light Mode Layout: Row 1 side-by-side, Row 2 side-by-side
+      toolsContent = Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _QuickToolCard(
+                  title: 'Quick Scan',
+                  icon: Icons.qr_code_scanner_rounded,
+                  iconBg: _primaryGreen.withValues(alpha: 0.12),
+                  iconColor: _primaryGreen,
+                  onTap: () => widget.onNavigateToScan?.call(),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _QuickToolCard(
+                  title: 'Threat Alerts',
+                  icon: Icons.notifications_active_outlined,
+                  iconBg: _amber.withValues(alpha: 0.12),
+                  iconColor: _amber,
+                  onTap: () {
+                    ref.read(alertsTabProvider.notifier).state = 0;
+                    widget.onNavigateToAlerts?.call();
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _QuickToolCard(
+                  title: 'Blocked List',
+                  icon: Icons.block_rounded,
+                  iconBg: _red.withValues(alpha: 0.12),
+                  iconColor: _red,
+                  onTap: () => context.push('/blocked_list'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _QuickToolCard(
+                  title: 'Community Threats',
+                  icon: Icons.public_outlined,
+                  iconBg: Colors.teal.withValues(alpha: 0.12),
+                  iconColor: Colors.teal,
+                  onTap: () => context.push('/community-reports'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Quick Tools',
+          'Quick Actions',
           style: TextStyle(
             color: _textPrimary,
             fontSize: 18,
@@ -526,44 +659,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
             letterSpacing: -0.5,
           ),
         ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: _QuickToolCard(
-                title: 'Quick Scan',
-                icon: Icons.qr_code_scanner_rounded,
-                iconBg: _primaryGreen.withValues(alpha: 0.12),
-                iconColor: _primaryGreen,
-                onTap: () => widget.onNavigateToScan?.call(),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _QuickToolCard(
-                title: 'Threat Alerts',
-                icon: Icons.notifications_active_outlined,
-                iconBg: _amber.withValues(alpha: 0.12),
-                iconColor: _amber,
-                onTap: () => widget.onNavigateToAlerts?.call(),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: _QuickToolCard(
-                title: 'Blocked List',
-                icon: Icons.block_rounded,
-                iconBg: _red.withValues(alpha: 0.12),
-                iconColor: _red,
-                onTap: () => context.push('/blocked_list'),
-              ),
-            ),
-          ],
-        ),
+        const SizedBox(height: 14),
+        toolsContent,
       ],
     );
   }
@@ -585,7 +682,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
               ),
             ),
             GestureDetector(
-              onTap: () => context.push('/history'),
+              onTap: () {
+                ref.read(alertsTabProvider.notifier).state = 1;
+                widget.onNavigateToAlerts?.call();
+              },
               child: Row(
                 children: [
                   Text(
@@ -608,7 +708,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
           ],
         ),
         const SizedBox(height: 16),
-        _recentScans.isEmpty ? _buildHorizontalEmptyState() : _buildHorizontalRecentList(),
+        _recentScans.isEmpty
+            ? _buildHorizontalEmptyState()
+            : _buildHorizontalRecentList(),
       ],
     );
   }
@@ -619,8 +721,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: _cardColor,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: _surfaceColor),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0F172A).withValues(alpha: 0.08),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
       child: Column(
         children: [
@@ -636,11 +745,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
           ),
           const SizedBox(height: 4),
           Text(
-            'Click Scan Tab to analyze your first URL.',
-            style: TextStyle(
-              color: _textSecondary,
-              fontSize: 13,
-            ),
+            'Tap Quick Scan to analyze your first URL.',
+            style: TextStyle(color: _textSecondary, fontSize: 13),
             textAlign: TextAlign.center,
           ),
         ],
@@ -660,7 +766,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
           final isSafe = scan.isSafe;
           final resultColor = isSafe ? _primaryGreen : _red;
           final riskScore = scan.riskScore ?? 0;
-
           return Container(
             width: 220,
             margin: const EdgeInsets.only(right: 14, bottom: 4),
@@ -684,8 +789,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: isSafe
-                          ? [const Color(0xFF0B4C44).withValues(alpha: 0.85), const Color(0xFF064E3B).withValues(alpha: 0.7)]
-                          : [const Color(0xFF7F1D1D).withValues(alpha: 0.85), const Color(0xFF991B1B).withValues(alpha: 0.7)],
+                          ? [
+                              const Color(0xFF0B4C44).withValues(alpha: 0.85),
+                              const Color(0xFF064E3B).withValues(alpha: 0.7),
+                            ]
+                          : [
+                              const Color(0xFF7F1D1D).withValues(alpha: 0.85),
+                              const Color(0xFF991B1B).withValues(alpha: 0.7),
+                            ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -700,7 +811,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.black.withValues(alpha: 0.3),
                           borderRadius: BorderRadius.circular(8),
@@ -708,9 +822,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                         child: Row(
                           children: [
                             Icon(
-                              isSafe ? Icons.gpp_good_rounded : Icons.gpp_maybe_rounded,
+                              isSafe
+                                  ? Icons.gpp_good_rounded
+                                  : Icons.gpp_maybe_rounded,
                               size: 12,
-                              color: isSafe ? const Color(0xFF5CED73) : const Color(0xFFFF4D4D),
+                              color: isSafe
+                                  ? const Color(0xFF5CED73)
+                                  : const Color(0xFFFF4D4D),
                             ),
                             const SizedBox(width: 4),
                             Text(
@@ -725,7 +843,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                         ),
                       ),
                       Icon(
-                        isSafe ? Icons.verified_user_rounded : Icons.warning_rounded,
+                        isSafe
+                            ? Icons.verified_user_rounded
+                            : Icons.warning_rounded,
                         color: Colors.white.withValues(alpha: 0.9),
                         size: 22,
                       ),
@@ -752,7 +872,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
                               color: resultColor.withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(6),
@@ -788,6 +911,326 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
   }
 }
 
+class _HeaderIconButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _HeaderIconButton({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: context.cardBg,
+            shape: BoxShape.circle,
+            border: Border.all(color: context.border),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF0F172A).withValues(alpha: 0.08),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Icon(icon, color: context.textPrimary, size: 22),
+        ),
+      ),
+    );
+  }
+}
+
+class _DashboardSecurityCard extends ConsumerWidget {
+  const _DashboardSecurityCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(userProvider);
+    final remainingScans = ref.watch(scanLimitProvider).valueOrNull ?? 0;
+    const totalScans = 50;
+    final usedScans = (totalScans - remainingScans).clamp(0, totalScans);
+    final progress = usedScans / totalScans;
+    final isPremium = user?.isPremium ?? false;
+    final planLabel = isPremium ? 'PREMIUM' : 'FREE PLAN';
+    final tierLabel = isPremium ? 'PREMIUM' : 'FREE';
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF071A12), Color(0xFF0D241B)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        border: Border.all(
+          color: AppPalette.darkAccentGreen.withValues(alpha: 0.6),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF22C55E).withValues(alpha: 0.18),
+            blurRadius: 45,
+            offset: const Offset(0, 18),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _ShieldActivePill(),
+                    const SizedBox(height: 16),
+                    Text(
+                      'URL DEFENDER',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.65),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      planLabel,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.8,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Container(
+                    width: 50,
+                    height: 50,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppPalette.darkWarning),
+                    ),
+                    child: const Icon(
+                      Icons.workspace_premium_outlined,
+                      color: AppPalette.darkWarning,
+                      size: 27,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: AppPalette.darkWarning.withValues(alpha: 0.8),
+                      ),
+                    ),
+                    child: Text(
+                      tierLabel,
+                      style: const TextStyle(
+                        color: AppPalette.darkWarning,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: progress),
+              duration: const Duration(milliseconds: 700),
+              curve: Curves.easeOutCubic,
+              builder: (context, value, _) => LinearProgressIndicator(
+                value: value,
+                minHeight: 4,
+                color: AppPalette.darkAccentGreen,
+                backgroundColor: Colors.white.withValues(alpha: 0.13),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Text(
+                '$usedScans of $totalScans scans used',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.72),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const Spacer(),
+              TextButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const PremiumScreen()),
+                ),
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF3B82F6),
+                  minimumSize: Size.zero,
+                  padding: EdgeInsets.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text(
+                  'Upgrade →',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: const [
+              Expanded(
+                child: _SecurityFeature(
+                  icon: Icons.shield_outlined,
+                  label: 'Unlimited\nProtection',
+                ),
+              ),
+              SizedBox(width: 8),
+              Expanded(
+                child: _SecurityFeature(
+                  icon: Icons.bolt_rounded,
+                  label: 'Real-time\nScanning',
+                ),
+              ),
+              SizedBox(width: 8),
+              Expanded(
+                child: _SecurityFeature(
+                  icon: Icons.lock_outline_rounded,
+                  label: 'Advanced\nSecurity',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ShieldActivePill extends StatefulWidget {
+  @override
+  State<_ShieldActivePill> createState() => _ShieldActivePillState();
+}
+
+class _ShieldActivePillState extends State<_ShieldActivePill>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1600),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: const Color(0xFF14532D),
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(
+                0xFF39FF88,
+              ).withValues(alpha: 0.12 + (_controller.value * 0.14)),
+              blurRadius: 12 + (_controller.value * 8),
+            ),
+          ],
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.shield_outlined,
+              color: AppPalette.darkAccentGreen,
+              size: 15,
+            ),
+            SizedBox(width: 6),
+            Text(
+              'SHIELD ACTIVE',
+              style: TextStyle(
+                color: AppPalette.darkAccentGreen,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SecurityFeature extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _SecurityFeature({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.055),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: AppPalette.darkAccentGreen, size: 18),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+              height: 1.25,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _QuickToolCard extends StatelessWidget {
   final String title;
   final IconData icon;
@@ -816,13 +1259,13 @@ class _QuickToolCard extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         decoration: BoxDecoration(
           color: cardColor,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(color: border),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.02),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
+              color: const Color(0xFF0F172A).withValues(alpha: 0.08),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
             ),
           ],
         ),
@@ -830,10 +1273,7 @@ class _QuickToolCard extends StatelessWidget {
           children: [
             Container(
               padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: iconBg,
-                shape: BoxShape.circle,
-              ),
+              decoration: BoxDecoration(color: iconBg, shape: BoxShape.circle),
               child: Icon(icon, color: iconColor, size: 20),
             ),
             const SizedBox(width: 12),
@@ -881,6 +1321,25 @@ class _UserAvatarState extends State<_UserAvatar> {
 
   @override
   Widget build(BuildContext context) {
+    final avatarUrl = widget.user?.avatarUrl;
+    Widget? avatarImage;
+    if (avatarUrl != null && avatarUrl.startsWith('http')) {
+      avatarImage = Image.network(
+        avatarUrl,
+        key: ValueKey(avatarUrl),
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => const SizedBox.shrink(),
+      );
+    } else if (avatarUrl != null && avatarUrl.startsWith('data:image/')) {
+      try {
+        avatarImage = Image.memory(
+          base64Decode(avatarUrl.split(',').last),
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => const SizedBox.shrink(),
+        );
+      } catch (_) {}
+    }
+
     return GestureDetector(
       onTapDown: (_) {
         setState(() {
@@ -911,10 +1370,7 @@ class _UserAvatarState extends State<_UserAvatar> {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             gradient: const LinearGradient(
-              colors: [
-                Color(0xFF1A7A3A),
-                Color(0xFF1B5E20),
-              ],
+              colors: [Color(0xFF14532D), Color(0xFF22C55E)],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
@@ -930,7 +1386,7 @@ class _UserAvatarState extends State<_UserAvatar> {
                 spreadRadius: 1,
               ),
               BoxShadow(
-                color: const Color(0xFF1A7A3A).withValues(alpha: 0.3),
+                color: const Color(0xFF22C55E).withValues(alpha: 0.3),
                 blurRadius: 12,
                 spreadRadius: 2,
               ),
@@ -951,16 +1407,19 @@ class _UserAvatarState extends State<_UserAvatar> {
                     ),
                   ),
                 ),
-                Center(
-                  child: Text(
-                    widget.getAvatarInitial(widget.user).toUpperCase(),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 22,
+                if (avatarImage != null)
+                  Positioned.fill(child: avatarImage)
+                else
+                  Center(
+                    child: Text(
+                      widget.getAvatarInitial(widget.user).toUpperCase(),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 22,
+                      ),
                     ),
                   ),
-                ),
               ],
             ),
           ),
@@ -1017,15 +1476,12 @@ class _NotificationButtonState extends State<_NotificationButton> {
               height: 44,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.white.withValues(alpha: 0.1),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.15),
-                  width: 1,
-                ),
+                color: context.cardBg,
+                border: Border.all(color: context.border, width: 1),
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.notifications_none_rounded,
-                color: Colors.white,
+                color: context.textPrimary,
                 size: 22,
               ),
             ),
@@ -1037,7 +1493,7 @@ class _NotificationButtonState extends State<_NotificationButton> {
                   width: 10,
                   height: 10,
                   decoration: const BoxDecoration(
-                    color: Color(0xFF1A7A3A),
+                    color: Color(0xFF22C55E),
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -1097,31 +1553,25 @@ class SubscriptionDashboardCard extends ConsumerStatefulWidget {
   const SubscriptionDashboardCard({super.key});
 
   @override
-  ConsumerState<SubscriptionDashboardCard> createState() => _SubscriptionDashboardCardState();
+  ConsumerState<SubscriptionDashboardCard> createState() =>
+      _SubscriptionDashboardCardState();
 }
 
-class _SubscriptionDashboardCardState extends ConsumerState<SubscriptionDashboardCard> {
-  Timer? _timer;
-  bool _isDowngrading = false;
+class _SubscriptionDashboardCardState
+    extends ConsumerState<SubscriptionDashboardCard> {
   ScrollPosition? _scrollPosition;
   double _parallaxOffset = 0.0;
 
   @override
   void initState() {
     super.initState();
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      _checkSubscriptionStatus();
-    });
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkSubscriptionStatus();
       _setupScrollListener();
     });
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
     _cleanupScrollListener();
     super.dispose();
   }
@@ -1159,71 +1609,15 @@ class _SubscriptionDashboardCardState extends ConsumerState<SubscriptionDashboar
     }
   }
 
-  void _checkSubscriptionStatus() {
-    if (!mounted) return;
-    final user = ref.read(userProvider);
-    if (user != null && user.isPremium && !_isDowngrading) {
-      final subscription = ref.read(subscriptionProvider).valueOrNull;
-      if (subscription != null && subscription.expiryDate != null) {
-        final difference = subscription.expiryDate!.difference(DateTime.now());
-        if (difference.isNegative || difference.inSeconds <= 0) {
-          _isDowngrading = true;
-          _handleDowngrade(user.userId);
-        } else {
-          setState(() {});
-        }
-      }
-    }
-  }
-
-  Future<void> _handleDowngrade(String userId) async {
-    try {
-      final userService = ref.read(userServiceProvider);
-      await userService.updateUser(userId, {'is_premium': false});
-      ref.invalidate(subscriptionProvider);
-      ref.invalidate(scanLimitProvider);
-      if (mounted) {
-        setState(() {
-          _isDowngrading = false;
-        });
-      }
-    } catch (e) {
-      debugPrint('Error downgrading: $e');
-      if (mounted) {
-        setState(() {
-          _isDowngrading = false;
-        });
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    ref.listen<UserModel?>(userProvider, (previous, next) {
-      if (next != null && next.isPremium && !(previous?.isPremium ?? false)) {
-        setState(() {
-          _isDowngrading = false;
-        });
-      }
-    });
-
     final user = ref.watch(userProvider);
     final subscriptionAsync = ref.watch(subscriptionProvider);
     final plansAsync = ref.watch(planProvider);
 
     final isPremium = user?.isPremium ?? false;
 
-    if (user != null && isPremium) {
-      subscriptionAsync.whenData((subscription) {
-        if (subscription == null && !_isDowngrading) {
-          _isDowngrading = true;
-          _handleDowngrade(user.userId);
-        }
-      });
-    }
-
     String planName = isPremium ? 'PLUS' : 'FREE PLAN';
-    String planTier = 'free'; // 'free', 'monthly', 'yearly'
     final subscription = subscriptionAsync.valueOrNull;
     PlanTier currentTier = PlanTier.free;
 
@@ -1231,61 +1625,28 @@ class _SubscriptionDashboardCardState extends ConsumerState<SubscriptionDashboar
       final plans = plansAsync.valueOrNull ?? [];
       final activePlan = plans.firstWhere(
         (p) => p.planId == subscription.planId,
-        orElse: () => PlanModel(planId: '', name: 'PLUS', durationMonths: 0, price: 0),
+        orElse: () =>
+            PlanModel(planId: '', name: 'PLUS', durationMonths: 0, price: 0),
       );
       planName = activePlan.name.toUpperCase();
       if (activePlan.name.toLowerCase().contains('year')) {
-        planTier = 'yearly';
         currentTier = PlanTier.pro;
-      } else if (activePlan.name.toLowerCase().contains('enterprise') || activePlan.name.toLowerCase().contains('business')) {
-        planTier = 'enterprise';
+      } else if (activePlan.name.toLowerCase().contains('enterprise') ||
+          activePlan.name.toLowerCase().contains('business')) {
         currentTier = PlanTier.enterprise;
       } else {
-        planTier = 'monthly';
         currentTier = PlanTier.pro;
       }
     }
 
     final config = planTierConfigs[currentTier]!;
 
-    String daysStr = '00';
-    String hoursStr = '00';
-    String minutesStr = '00';
-    String secondsStr = '00';
-    bool showExpiryWarning = false;
-
-    if (isPremium && subscription != null && subscription.expiryDate != null) {
-      final difference = subscription.expiryDate!.difference(DateTime.now());
-      if (!difference.isNegative) {
-        final days = difference.inDays;
-        final hours = difference.inHours % 24;
-        final minutes = difference.inMinutes % 60;
-        final seconds = difference.inSeconds % 60;
-
-        daysStr = days.toString().padLeft(2, '0');
-        hoursStr = hours.toString().padLeft(2, '0');
-        minutesStr = minutes.toString().padLeft(2, '0');
-        secondsStr = seconds.toString().padLeft(2, '0');
-
-        showExpiryWarning = difference.inDays <= 2;
-      }
-    }
-
-    final remainingScans = ref.watch(scanLimitProvider).valueOrNull ?? 50;
+    final remainingScans = ref.watch(scanLimitProvider).valueOrNull ?? 0;
     final usedScans = (50 - remainingScans).clamp(0, 50);
     final totalScans = 50;
 
     final isDarkTheme = context.isDark;
-    final tintColor = isDarkTheme 
-        ? const Color(0xFF1E241E).withValues(alpha: 0.16)
-        : const Color(0xFF0F172A).withValues(alpha: 0.10);
-
-    final noiseColor = isDarkTheme 
-        ? Colors.white.withValues(alpha: 0.05) 
-        : Colors.black.withValues(alpha: 0.04);
-
-        final borderColorStart = const Color(0xFF5CED73);
-    final borderColorEnd = const Color(0xFF8B4513); // Warm brown sampled from logo
+    final borderColorStart = const Color(0xFF5CED73);
 
     final double percent = (usedScans / totalScans).clamp(0.0, 1.0);
 
@@ -1303,7 +1664,7 @@ class _SubscriptionDashboardCardState extends ConsumerState<SubscriptionDashboar
               shape: BoxShape.circle,
               gradient: RadialGradient(
                 colors: [
-                  const Color(0xFF5CED73).withOpacity(0.15),
+                  const Color(0xFF5CED73).withValues(alpha: 0.15),
                   Colors.transparent,
                 ],
               ),
@@ -1318,7 +1679,9 @@ class _SubscriptionDashboardCardState extends ConsumerState<SubscriptionDashboar
             borderRadius: BorderRadius.circular(30),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(isDarkTheme ? 0.35 : 0.12),
+                color: Colors.black.withValues(
+                  alpha: isDarkTheme ? 0.35 : 0.12,
+                ),
                 blurRadius: 28,
                 offset: const Offset(0, 12),
               ),
@@ -1332,10 +1695,14 @@ class _SubscriptionDashboardCardState extends ConsumerState<SubscriptionDashboar
                 Positioned.fill(
                   child: CustomPaint(
                     painter: GlassCardPainter(
-                      tintColor: const Color(0xFF141614), // Dark card base color
-                      noiseColor: Colors.white.withOpacity(0.02),
+                      tintColor: const Color(
+                        0xFF141614,
+                      ), // Dark card base color
+                      noiseColor: Colors.white.withValues(alpha: 0.02),
                       borderColorStart: borderColorStart,
-                      borderColorEnd: const Color(0xFFFFD700), // Gold/Yellow end color matching screenshot
+                      borderColorEnd: const Color(
+                        0xFFFFD700,
+                      ), // Gold/Yellow end color matching screenshot
                       borderWidth: 1.5,
                       radius: 30,
                     ),
@@ -1360,12 +1727,19 @@ class _SubscriptionDashboardCardState extends ConsumerState<SubscriptionDashboar
                               children: [
                                 // Top-left status pill
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 5,
+                                  ),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF1A7A3A).withOpacity(0.06),
+                                    color: const Color(
+                                      0xFF1A7A3A,
+                                    ).withValues(alpha: 0.06),
                                     borderRadius: BorderRadius.circular(20),
                                     border: Border.all(
-                                      color: const Color(0xFF1A7A3A).withOpacity(0.5),
+                                      color: const Color(
+                                        0xFF1A7A3A,
+                                      ).withValues(alpha: 0.5),
                                       width: 1.0,
                                     ),
                                   ),
@@ -1402,7 +1776,9 @@ class _SubscriptionDashboardCardState extends ConsumerState<SubscriptionDashboar
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  isPremium ? planName.toUpperCase() : 'FREE PLAN',
+                                  isPremium
+                                      ? planName.toUpperCase()
+                                      : 'FREE PLAN',
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 32,
@@ -1425,14 +1801,20 @@ class _SubscriptionDashboardCardState extends ConsumerState<SubscriptionDashboar
                                 alignment: Alignment.center,
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
-                                  color: const Color(0xFF141614), // Dark circle background matching card
+                                  color: const Color(
+                                    0xFF141614,
+                                  ), // Dark circle background matching card
                                   border: Border.all(
-                                    color: config.glowColor.withOpacity(0.35),
+                                    color: config.glowColor.withValues(
+                                      alpha: 0.35,
+                                    ),
                                     width: 1.5,
                                   ),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: config.glowColor.withOpacity(0.12),
+                                      color: config.glowColor.withValues(
+                                        alpha: 0.12,
+                                      ),
                                       blurRadius: 10,
                                       spreadRadius: 1,
                                     ),
@@ -1442,12 +1824,19 @@ class _SubscriptionDashboardCardState extends ConsumerState<SubscriptionDashboar
                               ),
                               const SizedBox(height: 8),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 4,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: config.glowColor.withOpacity(0.15),
+                                  color: config.glowColor.withValues(
+                                    alpha: 0.15,
+                                  ),
                                   borderRadius: BorderRadius.circular(20),
                                   border: Border.all(
-                                    color: config.glowColor.withOpacity(0.4),
+                                    color: config.glowColor.withValues(
+                                      alpha: 0.4,
+                                    ),
                                     width: 1.0,
                                   ),
                                 ),
@@ -1473,7 +1862,7 @@ class _SubscriptionDashboardCardState extends ConsumerState<SubscriptionDashboar
                           height: 3,
                           width: double.infinity,
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.08),
+                            color: Colors.white.withValues(alpha: 0.08),
                             borderRadius: BorderRadius.circular(1.5),
                           ),
                           child: LayoutBuilder(
@@ -1489,7 +1878,9 @@ class _SubscriptionDashboardCardState extends ConsumerState<SubscriptionDashboar
                                     borderRadius: BorderRadius.circular(1.5),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: const Color(0xFF5CED73).withOpacity(0.4),
+                                        color: const Color(
+                                          0xFF5CED73,
+                                        ).withValues(alpha: 0.4),
                                         blurRadius: 6,
                                         spreadRadius: 1,
                                       ),
@@ -1507,7 +1898,7 @@ class _SubscriptionDashboardCardState extends ConsumerState<SubscriptionDashboar
                             Text(
                               '$usedScans of $totalScans scans used',
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.45),
+                                color: Colors.white.withValues(alpha: 0.45),
                                 fontSize: 12,
                                 fontWeight: FontWeight.w500,
                               ),
@@ -1516,7 +1907,9 @@ class _SubscriptionDashboardCardState extends ConsumerState<SubscriptionDashboar
                               onTap: () {
                                 Navigator.push(
                                   context,
-                                  MaterialPageRoute(builder: (context) => const PremiumScreen()),
+                                  MaterialPageRoute(
+                                    builder: (context) => const PremiumScreen(),
+                                  ),
                                 );
                               },
                               child: Row(
@@ -1525,7 +1918,9 @@ class _SubscriptionDashboardCardState extends ConsumerState<SubscriptionDashboar
                                   Text(
                                     'Upgrade',
                                     style: TextStyle(
-                                      color: isDarkTheme ? const Color(0xFF60A5FA) : const Color(0xFF1D4ED8),
+                                      color: isDarkTheme
+                                          ? const Color(0xFF60A5FA)
+                                          : const Color(0xFF1D4ED8),
                                       fontSize: 12.5,
                                       fontWeight: FontWeight.w700,
                                     ),
@@ -1533,7 +1928,9 @@ class _SubscriptionDashboardCardState extends ConsumerState<SubscriptionDashboar
                                   const SizedBox(width: 4),
                                   Icon(
                                     Icons.arrow_forward_rounded,
-                                    color: isDarkTheme ? const Color(0xFF60A5FA) : const Color(0xFF1D4ED8),
+                                    color: isDarkTheme
+                                        ? const Color(0xFF60A5FA)
+                                        : const Color(0xFF1D4ED8),
                                     size: 13,
                                   ),
                                 ],
@@ -1549,7 +1946,7 @@ class _SubscriptionDashboardCardState extends ConsumerState<SubscriptionDashboar
                             Text(
                               '$usedScans scans used this month',
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.45),
+                                color: Colors.white.withValues(alpha: 0.45),
                                 fontSize: 12,
                                 fontWeight: FontWeight.w500,
                               ),
@@ -1570,12 +1967,15 @@ class _SubscriptionDashboardCardState extends ConsumerState<SubscriptionDashboar
 
                       // Feature Row Container
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.02),
+                          color: Colors.white.withValues(alpha: 0.02),
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
-                            color: Colors.white.withOpacity(0.04),
+                            color: Colors.white.withValues(alpha: 0.04),
                             width: 1,
                           ),
                         ),
@@ -1583,15 +1983,24 @@ class _SubscriptionDashboardCardState extends ConsumerState<SubscriptionDashboar
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
                             Expanded(
-                              child: _buildFeatureItem(Icons.shield_outlined, 'Unlimited\nProtection'),
+                              child: _buildFeatureItem(
+                                Icons.shield_outlined,
+                                'Unlimited\nProtection',
+                              ),
                             ),
                             _buildVerticalDivider(),
                             Expanded(
-                              child: _buildFeatureItem(Icons.bolt_rounded, 'Real-time\nScanning'),
+                              child: _buildFeatureItem(
+                                Icons.bolt_rounded,
+                                'Real-time\nScanning',
+                              ),
                             ),
                             _buildVerticalDivider(),
                             Expanded(
-                              child: _buildFeatureItem(Icons.lock_outline_rounded, 'Advanced\nSecurity'),
+                              child: _buildFeatureItem(
+                                Icons.lock_outline_rounded,
+                                'Advanced\nSecurity',
+                              ),
                             ),
                           ],
                         ),
@@ -1607,83 +2016,15 @@ class _SubscriptionDashboardCardState extends ConsumerState<SubscriptionDashboar
     );
   }
 
-  Widget _buildCountdownCard(String value, String label) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.04),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: const Color(0xFF1A7A3A).withValues(alpha: 0.35),
-              width: 1,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF1A7A3A).withValues(alpha: 0.05),
-                blurRadius: 6,
-                spreadRadius: 1,
-              ),
-            ],
-          ),
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 200),
-            transitionBuilder: (Widget child, Animation<double> animation) {
-              return FadeTransition(
-                opacity: animation,
-                child: ScaleTransition(
-                  scale: animation,
-                  child: child,
-                ),
-              );
-            },
-            child: Text(
-              value,
-              key: ValueKey<String>(value),
-              style: const TextStyle(
-                color: Color(0xFF5CED73),
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                fontFeatures: [FontFeature.tabularFigures()],
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.5),
-            fontSize: 9,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.5,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildColonSeparator() {
-    return const Padding(
-      padding: EdgeInsets.only(left: 4, right: 4, bottom: 12),
-      child: Text(
-        ':',
-        style: TextStyle(
-          color: Colors.white24,
-          fontSize: 16,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-    );
-  }
-
   Widget _buildFeatureItem(IconData icon, String title) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(icon, size: 18, color: const Color(0xFF5CED73).withValues(alpha: 0.8)),
+        Icon(
+          icon,
+          size: 18,
+          color: const Color(0xFF5CED73).withValues(alpha: 0.8),
+        ),
         const SizedBox(width: 10),
         Flexible(
           child: Text(
@@ -1740,10 +2081,7 @@ class _RenewButtonState extends State<_RenewButton> {
           padding: const EdgeInsets.symmetric(horizontal: 28),
           decoration: BoxDecoration(
             gradient: const LinearGradient(
-              colors: [
-                Color(0xFF1A7A3A),
-                Color(0xFF1B5E20),
-              ],
+              colors: [Color(0xFF1A7A3A), Color(0xFF1B5E20)],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
@@ -1762,10 +2100,7 @@ class _RenewButtonState extends State<_RenewButton> {
           ),
           child: Row(
             children: const [
-              Text(
-                '👑',
-                style: TextStyle(fontSize: 18),
-              ),
+              Text('👑', style: TextStyle(fontSize: 18)),
               SizedBox(width: 12),
               Text(
                 'RENEW NOW',
@@ -1777,11 +2112,7 @@ class _RenewButtonState extends State<_RenewButton> {
                 ),
               ),
               Spacer(),
-              Icon(
-                Icons.arrow_forward_rounded,
-                color: Colors.white,
-                size: 18,
-              ),
+              Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 18),
             ],
           ),
         ),
@@ -1834,10 +2165,12 @@ class DynamicSubscriptionArtwork extends StatefulWidget {
   }
 
   @override
-  State<DynamicSubscriptionArtwork> createState() => _DynamicSubscriptionArtworkState();
+  State<DynamicSubscriptionArtwork> createState() =>
+      _DynamicSubscriptionArtworkState();
 }
 
-class _DynamicSubscriptionArtworkState extends State<DynamicSubscriptionArtwork> with TickerProviderStateMixin {
+class _DynamicSubscriptionArtworkState extends State<DynamicSubscriptionArtwork>
+    with TickerProviderStateMixin {
   late final AnimationController _floatingController;
   late final AnimationController _rotatingController;
 
@@ -1932,7 +2265,10 @@ class _DynamicSubscriptionArtworkState extends State<DynamicSubscriptionArtwork>
                     Positioned(
                       bottom: -4,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 3,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xFF1A7A3A),
                           borderRadius: BorderRadius.circular(6),
@@ -1942,7 +2278,9 @@ class _DynamicSubscriptionArtworkState extends State<DynamicSubscriptionArtwork>
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF1A7A3A).withValues(alpha: 0.3),
+                              color: const Color(
+                                0xFF1A7A3A,
+                              ).withValues(alpha: 0.3),
                               blurRadius: 4,
                             ),
                           ],
@@ -1995,10 +2333,7 @@ class _ShieldPainter extends CustomPainter {
 
     if (isPremium) {
       paint.shader = RadialGradient(
-        colors: [
-          const Color(0xFF1B5E20),
-          const Color(0xFF0F3214),
-        ],
+        colors: [const Color(0xFF1B5E20), const Color(0xFF0F3214)],
       ).createShader(Rect.fromLTWH(0, 0, w, h));
 
       // Use tier-specific border colors
@@ -2092,7 +2427,7 @@ class _HolographicRingPainter extends CustomPainter {
       final double radius = w / 2.3;
       const int segments = 40;
       final double segmentAngle = (2 * math.pi) / segments;
-      
+
       final double rotationOffset = animationValue * 2 * math.pi;
 
       for (int i = 0; i < segments; i++) {
@@ -2109,21 +2444,48 @@ class _HolographicRingPainter extends CustomPainter {
       }
 
       final dotPaint = Paint()..style = PaintingStyle.fill;
-      final List<double> particleAngles = [0.2, 1.0, 1.8, 2.6, 3.4, 4.2, 5.0, 5.8];
-      final List<double> particleSpeeds = [1.2, 0.8, 1.5, 1.0, 1.3, 0.9, 1.4, 1.1];
-      final List<double> particleRadii = [2.2, 1.5, 2.5, 1.8, 2.2, 1.6, 2.4, 1.7];
+      final List<double> particleAngles = [
+        0.2,
+        1.0,
+        1.8,
+        2.6,
+        3.4,
+        4.2,
+        5.0,
+        5.8,
+      ];
+      final List<double> particleSpeeds = [
+        1.2,
+        0.8,
+        1.5,
+        1.0,
+        1.3,
+        0.9,
+        1.4,
+        1.1,
+      ];
+      final List<double> particleRadii = [
+        2.2,
+        1.5,
+        2.5,
+        1.8,
+        2.2,
+        1.6,
+        2.4,
+        1.7,
+      ];
 
       for (int i = 0; i < particleAngles.length; i++) {
         final double progress = (animationValue * particleSpeeds[i]) % 1.0;
         final double currentRadius = radius + (w / 2 - radius) * progress;
         final double angle = particleAngles[i] + (animationValue * 0.4);
-        
+
         final double x = center.dx + currentRadius * math.cos(angle);
         final double y = center.dy + currentRadius * math.sin(angle);
-        
+
         final double opacity = (1.0 - progress) * 0.7;
         dotPaint.color = _particleColor.withValues(alpha: opacity);
-        
+
         canvas.drawCircle(Offset(x, y), particleRadii[i], dotPaint);
       }
     } else {
@@ -2134,7 +2496,8 @@ class _HolographicRingPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _HolographicRingPainter oldDelegate) {
-    return oldDelegate.planTier != planTier || oldDelegate.animationValue != animationValue;
+    return oldDelegate.planTier != planTier ||
+        oldDelegate.animationValue != animationValue;
   }
 }
 
@@ -2162,15 +2525,9 @@ class _AnimatedSearchBar extends StatefulWidget {
   State<_AnimatedSearchBar> createState() => _AnimatedSearchBarState();
 }
 
-class _AnimatedSearchBarState extends State<_AnimatedSearchBar> with SingleTickerProviderStateMixin {
-  static const _hints = [
-    'Search Quick Scan...',
-    'Search Threat Alerts...',
-    'Search Settings...',
-    'Search Blocked URLs...',
-    'Search Scan History...',
-    'Search Premium Plans...',
-  ];
+class _AnimatedSearchBarState extends State<_AnimatedSearchBar>
+    with SingleTickerProviderStateMixin {
+  static const _hints = ['Search Scan History...'];
 
   int _currentIndex = 0;
   late final AnimationController _animController;
@@ -2192,17 +2549,31 @@ class _AnimatedSearchBarState extends State<_AnimatedSearchBar> with SingleTicke
     );
 
     _fadeIn = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _animController, curve: const Interval(0.0, 0.5, curve: Curves.easeOut)),
+      CurvedAnimation(
+        parent: _animController,
+        curve: const Interval(0.0, 0.5, curve: Curves.easeOut),
+      ),
     );
     _fadeOut = Tween<double>(begin: 1.0, end: 0.0).animate(
-      CurvedAnimation(parent: _animController, curve: const Interval(0.5, 1.0, curve: Curves.easeIn)),
+      CurvedAnimation(
+        parent: _animController,
+        curve: const Interval(0.5, 1.0, curve: Curves.easeIn),
+      ),
     );
-    _slideIn = Tween<Offset>(begin: const Offset(0, 0.6), end: Offset.zero).animate(
-      CurvedAnimation(parent: _animController, curve: const Interval(0.0, 0.5, curve: Curves.easeOut)),
-    );
-    _slideOut = Tween<Offset>(begin: Offset.zero, end: const Offset(0, -0.6)).animate(
-      CurvedAnimation(parent: _animController, curve: const Interval(0.5, 1.0, curve: Curves.easeIn)),
-    );
+    _slideIn = Tween<Offset>(begin: const Offset(0, 0.6), end: Offset.zero)
+        .animate(
+          CurvedAnimation(
+            parent: _animController,
+            curve: const Interval(0.0, 0.5, curve: Curves.easeOut),
+          ),
+        );
+    _slideOut = Tween<Offset>(begin: Offset.zero, end: const Offset(0, -0.6))
+        .animate(
+          CurvedAnimation(
+            parent: _animController,
+            curve: const Interval(0.5, 1.0, curve: Curves.easeIn),
+          ),
+        );
 
     _rotateTimer = Timer.periodic(const Duration(seconds: 3), (_) {
       if (!mounted) return;
@@ -2225,7 +2596,9 @@ class _AnimatedSearchBarState extends State<_AnimatedSearchBar> with SingleTicke
 
   @override
   Widget build(BuildContext context) {
-    final hintColor = widget.isDark ? const Color(0xFF8E8E93) : const Color(0xFF475569).withValues(alpha: 0.7);
+    final hintColor = widget.isDark
+        ? AppPalette.darkTextSecondary
+        : AppPalette.lightTextSecondary;
 
     return GestureDetector(
       onTap: widget.onTap,
@@ -2233,23 +2606,24 @@ class _AnimatedSearchBarState extends State<_AnimatedSearchBar> with SingleTicke
         height: 52,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         decoration: BoxDecoration(
-          color: widget.isDark ? const Color(0xFF2A2A2A) : Colors.white,
-          borderRadius: BorderRadius.circular(16),
+          color: widget.isDark ? AppPalette.darkSurface : AppPalette.lightCard,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: widget.isDark
+                ? AppPalette.darkBorder
+                : AppPalette.lightBorder,
+          ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
+              color: const Color(0xFF0F172A).withValues(alpha: 0.08),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
             ),
           ],
         ),
         child: Row(
           children: [
-            Icon(
-              Icons.search_rounded,
-              color: widget.isDark ? const Color(0xFF8E8E93) : const Color(0xFF475569),
-              size: 22,
-            ),
+            Icon(Icons.search_rounded, color: hintColor, size: 22),
             const SizedBox(width: 12),
             Expanded(
               child: AnimatedBuilder(
@@ -2279,7 +2653,7 @@ class _AnimatedSearchBarState extends State<_AnimatedSearchBar> with SingleTicke
             ),
             Icon(
               Icons.arrow_forward_ios_rounded,
-              color: widget.isDark ? const Color(0xFF8E8E93).withValues(alpha: 0.5) : const Color(0xFF475569).withValues(alpha: 0.3),
+              color: hintColor.withValues(alpha: widget.isDark ? 0.5 : 0.45),
               size: 14,
             ),
           ],
@@ -2295,7 +2669,6 @@ class SquircleClipper extends CustomClipper<Path> {
 
   @override
   Path getClip(Size size) {
-    final rect = Rect.fromLTWH(0, 0, size.width, size.height);
     final path = Path();
     final r = radius.clamp(0.0, size.shortestSide / 2);
     final double offset = r * 1.4;
@@ -2305,9 +2678,23 @@ class SquircleClipper extends CustomClipper<Path> {
     path.lineTo(size.width - offset, 0);
     path.cubicTo(size.width - ctrl, 0, size.width, ctrl, size.width, offset);
     path.lineTo(size.width, size.height - offset);
-    path.cubicTo(size.width, size.height - ctrl, size.width - ctrl, size.height, size.width - offset, size.height);
+    path.cubicTo(
+      size.width,
+      size.height - ctrl,
+      size.width - ctrl,
+      size.height,
+      size.width - offset,
+      size.height,
+    );
     path.lineTo(offset, size.height);
-    path.cubicTo(ctrl, size.height, 0, size.height - ctrl, 0, size.height - offset);
+    path.cubicTo(
+      ctrl,
+      size.height,
+      0,
+      size.height - ctrl,
+      0,
+      size.height - offset,
+    );
     path.lineTo(0, offset);
     path.cubicTo(0, ctrl, ctrl, 0, offset, 0);
     path.close();
@@ -2338,7 +2725,7 @@ class GlassCardPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Rect.fromLTWH(0, 0, size.width, size.height);
-    
+
     final path = Path();
     final r = radius.clamp(0.0, size.shortestSide / 2);
     final double offset = r * 1.4;
@@ -2348,9 +2735,23 @@ class GlassCardPainter extends CustomPainter {
     path.lineTo(size.width - offset, 0);
     path.cubicTo(size.width - ctrl, 0, size.width, ctrl, size.width, offset);
     path.lineTo(size.width, size.height - offset);
-    path.cubicTo(size.width, size.height - ctrl, size.width - ctrl, size.height, size.width - offset, size.height);
+    path.cubicTo(
+      size.width,
+      size.height - ctrl,
+      size.width - ctrl,
+      size.height,
+      size.width - offset,
+      size.height,
+    );
     path.lineTo(offset, size.height);
-    path.cubicTo(ctrl, size.height, 0, size.height - ctrl, 0, size.height - offset);
+    path.cubicTo(
+      ctrl,
+      size.height,
+      0,
+      size.height - ctrl,
+      0,
+      size.height - offset,
+    );
     path.lineTo(0, offset);
     path.cubicTo(0, ctrl, ctrl, 0, offset, 0);
     path.close();
@@ -2366,7 +2767,7 @@ class GlassCardPainter extends CustomPainter {
     final noisePaint = Paint()
       ..color = noiseColor
       ..strokeWidth = 1.0;
-    
+
     final points = <Offset>[];
     double x = 17.0;
     double y = 29.0;
@@ -2393,7 +2794,7 @@ class GlassCardPainter extends CustomPainter {
     final rimPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = borderWidth * 1.2;
-    
+
     rimPaint.shader = LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
@@ -2426,16 +2827,13 @@ class GlowingPulseLine extends StatefulWidget {
   State<GlowingPulseLine> createState() => _GlowingPulseLineState();
 }
 
-class _GlowingPulseLineState extends State<GlowingPulseLine> with TickerProviderStateMixin {
+class _GlowingPulseLineState extends State<GlowingPulseLine>
+    with TickerProviderStateMixin {
   late AnimationController _pulseController;
   late AnimationController _idleController;
-  int _lastUsed = 0;
-
   @override
   void initState() {
     super.initState();
-    _lastUsed = widget.used;
-
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 700),
@@ -2455,7 +2853,6 @@ class _GlowingPulseLineState extends State<GlowingPulseLine> with TickerProvider
       if (!mediaQuery.disableAnimations) {
         _pulseController.forward(from: 0.0);
       }
-      _lastUsed = widget.used;
     }
   }
 
@@ -2468,7 +2865,9 @@ class _GlowingPulseLineState extends State<GlowingPulseLine> with TickerProvider
 
   @override
   Widget build(BuildContext context) {
-    final double fillPercentage = (widget.total > 0) ? (widget.used / widget.total).clamp(0.0, 1.0) : 0.0;
+    final double fillPercentage = (widget.total > 0)
+        ? (widget.used / widget.total).clamp(0.0, 1.0)
+        : 0.0;
     final greenColor = const Color(0xFF5CED73);
 
     return AnimatedBuilder(
@@ -2479,7 +2878,7 @@ class _GlowingPulseLineState extends State<GlowingPulseLine> with TickerProvider
           double t = _pulseController.value;
           pulseVal = 0.15 * math.sin(t * math.pi);
         }
-        
+
         double idleVal = _idleController.value;
         double glowScale = 1.0 + pulseVal;
         double glowOpacity = 0.3 + (idleVal * 0.15) + (pulseVal * 0.4);
@@ -2603,13 +3002,13 @@ class _CheckeredShieldPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final w = size.width;
     final h = size.height;
-    
+
     final lightGold = const Color(0xFFD4AF37);
     final darkGold = const Color(0xFF8C6D23);
-    
+
     final path = Path();
     final cx = w / 2;
-    
+
     path.moveTo(cx, 0);
     path.quadraticBezierTo(w * 0.15, h * 0.05, 0, h * 0.15);
     path.quadraticBezierTo(w * 0.05, h * 0.6, cx, h);
@@ -2667,7 +3066,7 @@ class _CheckeredShieldPainter extends CustomPainter {
     canvas.drawPath(brPath, paint);
 
     canvas.restore();
-    
+
     final borderPaint = Paint()
       ..color = const Color(0xFF5A4516)
       ..style = PaintingStyle.stroke
@@ -2698,7 +3097,7 @@ class _WatermarkShieldPainter extends CustomPainter {
     final w = size.width;
     final h = size.height;
     final cx = w / 2;
-    
+
     final path = Path();
     path.moveTo(cx, 0);
     path.quadraticBezierTo(w * 0.15, h * 0.05, 0, h * 0.15);
@@ -2712,14 +3111,14 @@ class _WatermarkShieldPainter extends CustomPainter {
 
     final cy = h * 0.45;
     final fillPaint = Paint()..style = PaintingStyle.fill;
-    
+
     final baseOpacityColor = Colors.white.withValues(alpha: 0.02);
     final altOpacityColor = Colors.white.withValues(alpha: 0.05);
 
     // Top-Left
     fillPaint.color = baseOpacityColor;
     canvas.drawRect(Rect.fromLTRB(0, 0, cx, cy), fillPaint);
-    
+
     // Top-Right
     fillPaint.color = altOpacityColor;
     canvas.drawRect(Rect.fromLTRB(cx, 0, w, cy), fillPaint);
@@ -2754,7 +3153,7 @@ class _WatermarkShieldPainter extends CustomPainter {
       ..color = Colors.white.withValues(alpha: 0.06)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5;
-    
+
     canvas.drawLine(Offset(cx, 0), Offset(cx, h), linePaint);
     canvas.drawLine(Offset(0, cy), Offset(w, cy), linePaint);
 

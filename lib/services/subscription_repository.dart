@@ -1,44 +1,72 @@
-import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../models/subscription_model.dart';
+import '../models/api_value_parser.dart';
+import 'api_client.dart';
+
+class PaymentOrder {
+  final String keyId;
+  final String orderId;
+  final int amountPaise;
+  final String currency;
+
+  const PaymentOrder({
+    required this.keyId,
+    required this.orderId,
+    required this.amountPaise,
+    required this.currency,
+  });
+}
 
 class SubscriptionRepository {
-  static SubscriptionModel? _activeMockSubscription;
-  static bool _initialized = false;
+  SubscriptionRepository({ApiClient? client}) : _client = client ?? ApiClient();
 
-  static Future<void> _ensureInitialized() async {
-    if (_initialized) return;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final subJson = prefs.getString('active_subscription');
-      if (subJson != null) {
-        _activeMockSubscription = SubscriptionModel.fromJson(jsonDecode(subJson) as Map<String, dynamic>);
-      }
-    } catch (_) {}
-    _initialized = true;
-  }
+  final ApiClient _client;
 
-  static Future<void> _saveToPrefs() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      if (_activeMockSubscription != null) {
-        prefs.setString('active_subscription', jsonEncode(_activeMockSubscription!.toJson()));
-      } else {
-        prefs.remove('active_subscription');
-      }
-    } catch (_) {}
-  }
-
-  /// Fetch the current active subscription for the user from the subscriptions table.
   Future<SubscriptionModel?> getActiveSubscription(String userId) async {
-    await _ensureInitialized();
-    if (_activeMockSubscription != null && _activeMockSubscription!.userId == userId) {
-      return _activeMockSubscription;
-    }
-    return null;
+    final payments = await _client.get('payments');
+    final items = payments['items'];
+    if (items is! List) return null;
+    final active = items
+        .whereType<Map>()
+        .where((item) => item['status'] == 'captured')
+        .toList();
+    if (active.isEmpty) return null;
+    final payment = Map<String, dynamic>.from(active.first);
+    final startDate = apiDateTime(payment['created_at']);
+    return SubscriptionModel(
+      subscriptionId: apiString(payment['subscription_id'] ?? payment['id']),
+      userId: userId,
+      planId: 'paid',
+      status: 'active',
+      paymentProvider: 'razorpay',
+      startDate: startDate,
+      expiryDate: startDate?.add(const Duration(days: 30)),
+    );
   }
 
-  /// Calls the Supabase Edge Function to verify Razorpay signature and activate subscription.
+  Future<PaymentOrder> createPaymentOrder(String planId, {String? couponCode}) async {
+    final payload = await _client.post(
+      'payments/orders',
+      body: {
+        'plan': planId,
+        if (couponCode != null && couponCode.isNotEmpty) 'coupon': couponCode,
+      },
+    );
+    final key = apiNullableString(payload['key_id']);
+    final orderId = apiNullableString(payload['order_id']);
+    final amount = payload['amount_paise'] == null
+        ? null
+        : apiInt(payload['amount_paise']);
+    if (key == null || orderId == null || amount == null) {
+      throw const ApiException(500, ApiFailureKind.invalidResponse);
+    }
+    return PaymentOrder(
+      keyId: key,
+      orderId: orderId,
+      amountPaise: amount,
+      currency: apiString(payload['currency'], fallback: 'INR'),
+    );
+  }
+
   Future<bool> verifyPaymentAndUpgrade({
     required String userId,
     required String planId,
@@ -47,16 +75,27 @@ class SubscriptionRepository {
     required String signature,
     required double amount,
   }) async {
-    _activeMockSubscription = SubscriptionModel(
-      subscriptionId: paymentId,
-      userId: userId,
-      planId: planId,
-      status: 'active',
-      paymentProvider: 'razorpay',
-      startDate: DateTime.now().toUtc(),
-      expiryDate: DateTime.now().toUtc().add(const Duration(days: 365)),
+    final payload = await _client.post(
+      'payments/verify',
+      body: {
+        'razorpay_order_id': orderId,
+        'razorpay_payment_id': paymentId,
+        'razorpay_signature': signature,
+      },
     );
-    await _saveToPrefs();
-    return true;
+    return payload['status'] == 'captured';
+  }
+
+  Future<Map<String, dynamic>> validateCoupon(String code) async {
+    final payload = await _client.post(
+      'payments/coupons/validate',
+      body: {'code': code},
+    );
+    return Map<String, dynamic>.from(payload);
+  }
+
+  Future<bool> cancelActiveSubscription() async {
+    final payload = await _client.post('payments/cancel');
+    return payload['message'] != null;
   }
 }

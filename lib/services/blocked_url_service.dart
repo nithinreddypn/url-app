@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/blocked_url_model.dart';
 
@@ -20,17 +21,19 @@ class BlockedUrlService {
             if (item is Map<String, dynamic>) {
               loadedBlocked.add(BlockedUrlModel.fromJson(item));
             } else if (item is Map) {
-              loadedBlocked.add(BlockedUrlModel.fromJson(Map<String, dynamic>.from(item)));
+              loadedBlocked.add(
+                BlockedUrlModel.fromJson(Map<String, dynamic>.from(item)),
+              );
             }
           } catch (e) {
-            print('Error parsing individual blocked URL: $e');
+            if (kDebugMode) debugPrint('Blocked URL parse failed: $e');
           }
         }
         _localBlockedUrls.clear();
         _localBlockedUrls.addAll(loadedBlocked);
       }
     } catch (e) {
-      print('Error initializing local blocked URLs: $e');
+      if (kDebugMode) debugPrint('Blocked URL initialization failed: $e');
     }
     _initialized = true;
   }
@@ -38,10 +41,12 @@ class BlockedUrlService {
   static Future<void> _saveToPrefs() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final blockedJson = jsonEncode(_localBlockedUrls.map((b) => b.toJson()).toList());
+      final blockedJson = jsonEncode(
+        _localBlockedUrls.map((b) => b.toJson()).toList(),
+      );
       await prefs.setString('local_blocked_urls', blockedJson);
     } catch (e) {
-      print('Error saving local blocked URLs: $e');
+      if (kDebugMode) debugPrint('Blocked URL save failed: $e');
     }
   }
 
@@ -68,7 +73,9 @@ class BlockedUrlService {
   /// Unblock a URL (delete the blocked entry).
   Future<void> unblockUrl(String id, {required String userId}) async {
     await _ensureInitialized();
-    _localBlockedUrls.removeWhere((blocked) => blocked.id == id && blocked.userId == userId);
+    _localBlockedUrls.removeWhere(
+      (blocked) => blocked.id == id && blocked.userId == userId,
+    );
     await _saveToPrefs();
   }
 
@@ -78,14 +85,18 @@ class BlockedUrlService {
     required String url,
   }) async {
     await _ensureInitialized();
-    _localBlockedUrls.removeWhere((blocked) => blocked.url == url && blocked.userId == userId);
+    _localBlockedUrls.removeWhere(
+      (blocked) => blocked.url == url && blocked.userId == userId,
+    );
     await _saveToPrefs();
   }
 
   /// Get all blocked URLs for a specific user.
   Future<List<BlockedUrlModel>> getBlockedUrls(String userId) async {
     await _ensureInitialized();
-    return _localBlockedUrls.where((blocked) => blocked.userId == userId).toList();
+    return _localBlockedUrls
+        .where((blocked) => blocked.userId == userId)
+        .toList();
   }
 
   /// Check if a URL is blocked for a specific user.
@@ -94,13 +105,17 @@ class BlockedUrlService {
     required String url,
   }) async {
     await _ensureInitialized();
-    return _localBlockedUrls.any((blocked) => blocked.url == url && blocked.userId == userId);
+    return _localBlockedUrls.any(
+      (blocked) => blocked.url == url && blocked.userId == userId,
+    );
   }
 
   /// Get the count of blocked URLs for a user.
   Future<int> getBlockedCount(String userId) async {
     await _ensureInitialized();
-    return _localBlockedUrls.where((blocked) => blocked.userId == userId).length;
+    return _localBlockedUrls
+        .where((blocked) => blocked.userId == userId)
+        .length;
   }
 
   /// Listen to real-time blocked URL changes for a user.

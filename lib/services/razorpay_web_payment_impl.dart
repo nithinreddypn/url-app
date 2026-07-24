@@ -9,6 +9,7 @@ class RazorpayWebPayment {
     required String description,
     required String email,
     required String contact,
+    required String orderId,
     required Function(String paymentId, String orderId, String signature) onSuccess,
     required Function(String errorMessage) onFailure,
   }) {
@@ -18,6 +19,7 @@ class RazorpayWebPayment {
         'key': key,
         'amount': (amount * 100).toInt(),
         'currency': 'INR',
+        'order_id': orderId,
         'name': name,
         'description': description,
         'prefill': {
@@ -42,7 +44,7 @@ class RazorpayWebPayment {
 
       final razorpayConstructor = context['Razorpay'];
       if (razorpayConstructor == null) {
-        onFailure('Razorpay Web SDK is not loaded. Please make sure script is in index.html.');
+        onFailure('Payment service is temporarily unavailable.');
         return;
       }
 
@@ -67,18 +69,17 @@ class RazorpayWebPayment {
           });
           
           script['onerror'] = allowInterop(() {
-            onFailure('Failed to load Razorpay Web SDK dynamically. Please check your internet connection.');
+            onFailure('Payment service is temporarily unavailable.');
           });
 
           final head = doc['head'] ?? doc.callMethod('getElementsByTagName', ['head'])[0];
           head.callMethod('appendChild', [script]);
         } else {
-          onFailure('HTML document is not accessible to load Razorpay script.');
+          onFailure('Payment service is temporarily unavailable.');
         }
-      } catch (e) {
-        onFailure('Error dynamically loading Razorpay script: $e');
+      } catch (_) {
+        onFailure('Payment service is temporarily unavailable.');
       }
     }
   }
 }
-

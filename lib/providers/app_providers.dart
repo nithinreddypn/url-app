@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../models/user_model.dart';
 import '../models/plan_model.dart';
@@ -10,19 +12,20 @@ import '../models/subscription_model.dart';
 import '../models/blocked_url_model.dart';
 import '../models/url_scan_model.dart';
 import '../services/url_scan_service.dart';
-import '../services/user_service.dart';
-import '../services/settings_repository.dart';
+import '../services/auth_service.dart';
 import '../services/plan_repository.dart';
 import '../services/subscription_repository.dart';
 import '../services/scan_limit_service.dart';
 import '../services/blocked_url_service.dart';
-
+import '../services/community_threat_service.dart';
 
 // Service & Repository Providers
-final userServiceProvider = Provider((ref) => UserService());
-final settingsRepositoryProvider = Provider((ref) => SettingsRepository());
+final authServiceProvider = Provider((ref) => AuthService());
+final communityThreatServiceProvider = Provider((ref) => CommunityThreatService());
 final planRepositoryProvider = Provider((ref) => PlanRepository());
-final subscriptionRepositoryProvider = Provider((ref) => SubscriptionRepository());
+final subscriptionRepositoryProvider = Provider(
+  (ref) => SubscriptionRepository(),
+);
 
 final scanLimitServiceProvider = Provider((ref) {
   return ScanLimitService();
@@ -32,83 +35,171 @@ final scanLimitServiceProvider = Provider((ref) {
 
 /// Exposes the current authenticated user's model and profiles metadata.
 final userProvider = StateNotifierProvider<UserNotifier, UserModel?>((ref) {
-  final userService = ref.watch(userServiceProvider);
-  return UserNotifier(userService);
+  final authService = ref.watch(authServiceProvider);
+  return UserNotifier(authService);
 });
 
 class UserNotifier extends StateNotifier<UserModel?> {
-  final UserService _userService;
+  final AuthService _authService;
+  bool _signedOut = false;
+  int _operationRevision = 0;
+  int _profileRevision = 0;
 
-  UserNotifier(this._userService) : super(null) {
+  UserNotifier(this._authService) : super(null) {
     _init();
   }
 
   void _init() async {
+    final operation = ++_operationRevision;
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final userJson = prefs.getString('active_user');
-      if (userJson != null) {
-        state = UserModel.fromJson(jsonDecode(userJson) as Map<String, dynamic>);
-      }
-    } catch (_) {}
+      if (!await _authService.hasStoredSession()) return;
+      final user = await _authService.currentUser();
+      await _applyUser(user, operation);
+    } catch (error, stackTrace) {
+      await _clearPersistedUserIfCurrent(operation);
+      await _authService.signOut(); // Clear the invalid session token!
+      _debugLog('Initial profile refresh failed', error, stackTrace);
+    }
   }
 
-  void login(String email, String username) {
-    final cleanId = email.toLowerCase() == 'nexabot@gmail.com'
-        ? 'mock_user_id_12345'
-        : 'user_${email.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_').toLowerCase()}';
-    
-    final isPremium = email.toLowerCase() == 'nexabot@gmail.com' || email.toLowerCase() == 'nexabot4@gmail.com';
-    
-    final user = UserModel(
-      userId: cleanId,
-      username: username,
-      email: email,
-      isPremium: isPremium,
-    );
-    
-    state = user;
-
-    SharedPreferences.getInstance().then((prefs) {
-      prefs.setString('active_user', jsonEncode(user.toJson()));
-    });
-
-    // Asynchronously register/persist the user profile
-    _userService.createUser(
-      userId: cleanId,
-      username: username,
-      email: email,
-    ).then((_) {
-      if (isPremium) {
-        _userService.updateUser(cleanId, {'is_premium': true});
-      }
-    });
+  Future<void> loginWithSession(AuthSession session) async {
+    _signedOut = false;
+    final operation = ++_operationRevision;
+    await _applyUser(session.user, operation);
   }
 
-  void logout() {
+  Future<void> logout() async {
+    // Clear reactive/local profile state immediately so routing can no longer
+    // treat the user as authenticated while the server logout is in flight.
+    _signedOut = true;
+    _operationRevision++;
+    _profileRevision++;
+    final previousAvatar = state?.avatarUrl;
     state = null;
-    SharedPreferences.getInstance().then((prefs) {
-      prefs.remove('active_user');
-    });
+    _invalidateAvatar(previousAvatar);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('active_user');
+    await _authService.signOut();
   }
 
   Future<void> refreshUser() async {
     if (state == null) return;
-    final user = await _userService.getUser(state!.userId);
-    if (user != null) {
-      state = user;
-      final prefs = await SharedPreferences.getInstance();
-      prefs.setString('active_user', jsonEncode(user.toJson()));
-    }
+    final operation = ++_operationRevision;
+    final user = await _authService.currentUser();
+    await _applyUser(user, operation);
+  }
+
+  Future<void> updateProfile({required String fullName}) async {
+    final operation = ++_operationRevision;
+    final user = await _authService.updateProfile(fullName: fullName);
+    await _applyUser(user, operation);
+    await _refreshAfterMutation(operation);
+  }
+
+  Future<void> uploadAvatar(XFile image) async {
+    final operation = ++_operationRevision;
+    final user = await _authService.uploadAvatar(image);
+    await _applyUser(user, operation);
+    await _refreshAfterMutation(operation);
+  }
+
+  Future<void> removeAvatar() async {
+    final operation = ++_operationRevision;
+    final user = await _authService.removeAvatar();
+    await _applyUser(user, operation);
+    await _refreshAfterMutation(operation);
   }
 
   Future<void> upgradeUserToPremium() async {
     if (state == null) return;
-    final updatedUser = await _userService.updateUser(state!.userId, {'is_premium': true});
-    state = updatedUser;
-    
+    await refreshUser();
+  }
+
+  Future<void> deleteAccount() async {
+    _signedOut = true;
+    _operationRevision++;
+    _profileRevision++;
+    final previousAvatar = state?.avatarUrl;
+    state = null;
+    _invalidateAvatar(previousAvatar);
     final prefs = await SharedPreferences.getInstance();
-    prefs.setString('active_user', jsonEncode(updatedUser.toJson()));
+    await prefs.remove('active_user');
+    await _authService.deleteAccount();
+  }
+
+  bool _canApply(int operation) =>
+      !_signedOut && operation == _operationRevision;
+
+  Future<void> _applyUser(UserModel user, int operation) async {
+    if (!_canApply(operation)) return;
+    final previousAvatar = state?.avatarUrl;
+    final profile = ++_profileRevision;
+    state = user;
+
+    if (previousAvatar != user.avatarUrl) {
+      _invalidateAvatar(previousAvatar);
+      _invalidateAvatar(user.avatarUrl);
+    }
+    await _persistUserIfCurrent(user, operation, profile);
+  }
+
+  /// Mutation responses update the UI immediately, then `/me` is fetched as
+  /// the canonical source of truth. If reconciliation is temporarily
+  /// unavailable, the successful mutation response remains visible.
+  Future<void> _refreshAfterMutation(int operation) async {
+    if (!_canApply(operation)) return;
+    try {
+      final canonicalUser = await _authService.currentUser();
+      await _applyUser(canonicalUser, operation);
+    } catch (error, stackTrace) {
+      _debugLog('Profile reconciliation failed', error, stackTrace);
+    }
+  }
+
+  Future<void> _persistUserIfCurrent(
+    UserModel user,
+    int operation,
+    int profile,
+  ) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!_canApply(operation) || profile != _profileRevision) return;
+      await prefs.setString('active_user', jsonEncode(user.toJson()));
+    } catch (error, stackTrace) {
+      _debugLog('Profile cache write failed', error, stackTrace);
+    }
+  }
+
+  Future<void> _clearPersistedUserIfCurrent(int operation) async {
+    if (!_canApply(operation)) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (_canApply(operation)) await prefs.remove('active_user');
+    } catch (error, stackTrace) {
+      _debugLog('Profile cache clear failed', error, stackTrace);
+    }
+  }
+
+  void _invalidateAvatar(String? avatarUrl) {
+    if (avatarUrl == null ||
+        !(avatarUrl.startsWith('http://') ||
+            avatarUrl.startsWith('https://'))) {
+      return;
+    }
+    unawaited(
+      NetworkImage(avatarUrl).evict().catchError((Object error) {
+        if (kDebugMode) {
+          debugPrint('[UserNotifier] Avatar cache eviction failed: $error');
+        }
+        return false;
+      }),
+    );
+  }
+
+  void _debugLog(String context, Object error, StackTrace stackTrace) {
+    if (!kDebugMode) return;
+    debugPrint('[UserNotifier] $context: $error');
+    debugPrintStack(stackTrace: stackTrace);
   }
 }
 
@@ -118,33 +209,16 @@ final planProvider = FutureProvider<List<PlanModel>>((ref) async {
   return await repo.getActivePlans();
 });
 
-/// Exposes configurable application settings (e.g. free_scan_limit).
-final settingsProvider = FutureProvider<int>((ref) async {
-  return 50;
-});
-
 /// Exposes the current active subscription, treating the subscriptions table as the source of truth.
 final subscriptionProvider = FutureProvider<SubscriptionModel?>((ref) async {
   final user = ref.watch(userProvider);
   if (user == null) return null;
 
-  if (user.email == 'nexabot4@gmail.com' || user.email == 'nexabot@gmail.com') {
-    return SubscriptionModel(
-      subscriptionId: 'sub_mock_nexabot',
-      userId: user.userId,
-      planId: 'c3d4e5f6-a7b8-9c0d-1e2f-3a4b5c6d7e8f', // Yearly plan ID
-      status: 'active',
-      paymentProvider: 'razorpay',
-      startDate: DateTime.now().toUtc(),
-      expiryDate: DateTime.now().toUtc().add(const Duration(days: 365)),
-    );
-  }
-
   try {
     final repo = ref.watch(subscriptionRepositoryProvider);
     return await repo.getActiveSubscription(user.userId);
   } catch (e) {
-    debugPrint('Error in subscriptionProvider: $e');
+    if (kDebugMode) debugPrint('Subscription provider failed: $e');
     return null;
   }
 });
@@ -158,8 +232,8 @@ final scanLimitProvider = FutureProvider<int>((ref) async {
     final scanLimitService = ref.watch(scanLimitServiceProvider);
     return await scanLimitService.getRemainingScans(user.userId);
   } catch (e) {
-    debugPrint('Error in scanLimitProvider: $e');
-    return 10; // Default fallback to 10 scans
+    if (kDebugMode) debugPrint('Scan limit provider failed: $e');
+    return 0;
   }
 });
 
@@ -170,7 +244,7 @@ final blockedUrlsProvider = FutureProvider<List<BlockedUrlModel>>((ref) async {
     final blockedService = BlockedUrlService();
     return await blockedService.getBlockedUrls(user.userId);
   } catch (e) {
-    debugPrint('Error in blockedUrlsProvider: $e');
+    if (kDebugMode) debugPrint('Blocked URL provider failed: $e');
     return [];
   }
 });
@@ -183,10 +257,7 @@ class PaymentState {
   final PaymentStatus status;
   final String? errorMessage;
 
-  PaymentState({
-    required this.status,
-    this.errorMessage,
-  });
+  PaymentState({required this.status, this.errorMessage});
 
   factory PaymentState.idle() => PaymentState(status: PaymentStatus.idle);
   factory PaymentState.loading() => PaymentState(status: PaymentStatus.loading);
@@ -195,7 +266,9 @@ class PaymentState {
       PaymentState(status: PaymentStatus.failure, errorMessage: message);
 }
 
-final paymentProvider = StateNotifierProvider<PaymentNotifier, PaymentState>((ref) {
+final paymentProvider = StateNotifierProvider<PaymentNotifier, PaymentState>((
+  ref,
+) {
   final subRepo = ref.watch(subscriptionRepositoryProvider);
   final userNotif = ref.watch(userProvider.notifier);
   return PaymentNotifier(ref, subRepo, userNotif);
@@ -206,7 +279,8 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   final SubscriptionRepository _subRepo;
   final UserNotifier _userNotifier;
 
-  PaymentNotifier(this._ref, this._subRepo, this._userNotifier) : super(PaymentState.idle());
+  PaymentNotifier(this._ref, this._subRepo, this._userNotifier)
+    : super(PaymentState.idle());
 
   void setIdle() {
     state = PaymentState.idle();
@@ -219,6 +293,9 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
   void setFailure(String message) {
     state = PaymentState.failure(message);
   }
+
+  Future<PaymentOrder> createOrder(String planId, {String? couponCode}) =>
+      _subRepo.createPaymentOrder(planId, couponCode: couponCode);
 
   Future<bool> verifyAndUpgrade({
     required String planId,
@@ -252,14 +329,18 @@ class PaymentNotifier extends StateNotifier<PaymentState> {
       _ref.invalidate(scanLimitProvider);
       return true;
     } else {
-      state = PaymentState.failure('Payment verification signature check failed.');
+      state = PaymentState.failure(
+        'Payment verification signature check failed.',
+      );
       return false;
     }
   }
 }
 
 // Theme State Provider
-final themeModeProvider = StateNotifierProvider<ThemeModeNotifier, ThemeMode>((ref) {
+final themeModeProvider = StateNotifierProvider<ThemeModeNotifier, ThemeMode>((
+  ref,
+) {
   return ThemeModeNotifier();
 });
 
@@ -306,9 +387,10 @@ class CooldownTimerNotifier extends StateNotifier<int> {
   }
 }
 
-final cooldownTimerProvider = StateNotifierProvider.autoDispose<CooldownTimerNotifier, int>((ref) {
-  return CooldownTimerNotifier();
-});
+final cooldownTimerProvider =
+    StateNotifierProvider.autoDispose<CooldownTimerNotifier, int>((ref) {
+      return CooldownTimerNotifier();
+    });
 
 // --- Pending Signup State Providers (Kept for compilation and future production use) ---
 
@@ -317,11 +399,7 @@ class PendingSignupState {
   final String? email;
   final String? username;
 
-  PendingSignupState({
-    required this.isPending,
-    this.email,
-    this.username,
-  });
+  PendingSignupState({required this.isPending, this.email, this.username});
 
   factory PendingSignupState.idle() => PendingSignupState(isPending: false);
   factory PendingSignupState.pending(String email, String? username) =>
@@ -340,9 +418,10 @@ class PendingSignupNotifier extends StateNotifier<PendingSignupState> {
   }
 }
 
-final pendingSignupProvider = StateNotifierProvider<PendingSignupNotifier, PendingSignupState>((ref) {
-  return PendingSignupNotifier();
-});
+final pendingSignupProvider =
+    StateNotifierProvider<PendingSignupNotifier, PendingSignupState>((ref) {
+      return PendingSignupNotifier();
+    });
 
 final isEmailVerifiedProvider = Provider<bool>((ref) {
   final user = ref.watch(userProvider);
@@ -367,7 +446,47 @@ final dangerousScansProvider = FutureProvider<List<UrlScanModel>>((ref) async {
   final user = ref.watch(userProvider);
   if (user == null) return [];
   final scanService = UrlScanService();
-  return await scanService.getScansByResult('dangerous', userId: user.userId);
+  final scans = await scanService.getUserScans(user.userId);
+  return scans.where((scan) {
+    final verdict = scan.scanResult?.toLowerCase();
+    return verdict == 'dangerous' || verdict == 'suspicious';
+  }).toList();
 });
 
 final tabIndexProvider = StateProvider<int>((ref) => 0);
+final settingsSectionProvider = StateProvider<int>((ref) => 0);
+final alertsTabProvider = StateProvider<int>((ref) => 0);
+
+// Accent color notifier
+class AccentColorNotifier extends StateNotifier<Color> {
+  AccentColorNotifier() : super(const Color(0xFF10B981)) {
+    _loadAccentColor();
+  }
+
+  Future<void> _loadAccentColor() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final colorVal = prefs.getInt('settings_accent_color');
+      if (colorVal != null) {
+        state = Color(colorVal);
+      }
+    } catch (_) {}
+  }
+
+  @override
+  set state(Color value) {
+    super.state = value;
+    _saveAccentColor(value);
+  }
+
+  Future<void> _saveAccentColor(Color color) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('settings_accent_color', color.value);
+    } catch (_) {}
+  }
+}
+
+final accentColorProvider = StateNotifierProvider<AccentColorNotifier, Color>((ref) {
+  return AccentColorNotifier();
+});

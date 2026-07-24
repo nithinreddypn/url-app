@@ -1,3 +1,5 @@
+import 'api_value_parser.dart';
+
 class CommunityThreatModel {
   final String threatId;
   final String? threatName;
@@ -23,28 +25,18 @@ class CommunityThreatModel {
     this.reportCount = 0,
   });
 
-  static DateTime _parseUtc(String dateStr) {
-    if (!dateStr.endsWith('Z') && !dateStr.contains('+') && !dateStr.contains('-')) {
-      final normalized = dateStr.replaceAll(' ', 'T');
-      return DateTime.parse('${normalized}Z').toLocal();
-    }
-    return DateTime.parse(dateStr).toLocal();
-  }
-
   factory CommunityThreatModel.fromJson(Map<String, dynamic> json) {
     return CommunityThreatModel(
-      threatId: json['threat_id'] as String,
-      threatName: json['threat_name'] as String?,
-      threatType: json['threat_type'] as String?,
-      description: json['description'] as String?,
-      severity: json['severity'] as String?,
-      reportedBy: json['reported_by'] as String?,
-      reportedAt: json['reported_at'] != null
-          ? _parseUtc(json['reported_at'] as String)
-          : null,
-      url: json['url'] as String?,
-      blockedList: json['blocked_list'] as String?,
-      reportCount: json['report_count'] as int? ?? 0,
+      threatId: apiString(json['threat_id'] ?? json['id']),
+      threatName: apiNullableString(json['threat_name']),
+      threatType: apiNullableString(json['threat_type']),
+      description: apiNullableString(json['description']),
+      severity: apiNullableString(json['severity']),
+      reportedBy: apiNullableString(json['reported_by']),
+      reportedAt: apiDateTime(json['reported_at']),
+      url: apiNullableString(json['url']),
+      blockedList: apiNullableString(json['blocked_list']),
+      reportCount: apiInt(json['report_count']),
     );
   }
 

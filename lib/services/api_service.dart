@@ -1,18 +1,27 @@
+import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'api_client.dart';
 
 class ApiService {
-  Future<dynamic> getRequest(String url,
-      {Map<String, String>? headers}) async {
+  Future<dynamic> getRequest(String url, {Map<String, String>? headers}) async {
     try {
-      final response = await http.get(
-        Uri.parse(url),
-        headers: headers,
-      );
+      final response = await http
+          .get(Uri.parse(url), headers: headers)
+          .timeout(const Duration(seconds: 20));
 
       return _handleResponse(response);
-    } catch (e) {
-      throw Exception('GET Request Failed: $e');
+    } on TimeoutException {
+      throw const ApiException(408, ApiFailureKind.timeout);
+    } on ApiException {
+      rethrow;
+    } catch (error, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('[ApiService] $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
+      throw const ApiException(0, ApiFailureKind.connection);
     }
   }
 
@@ -22,15 +31,21 @@ class ApiService {
     Map<String, dynamic>? body,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse(url),
-        headers: headers,
-        body: jsonEncode(body),
-      );
+      final response = await http
+          .post(Uri.parse(url), headers: headers, body: jsonEncode(body))
+          .timeout(const Duration(seconds: 20));
 
       return _handleResponse(response);
-    } catch (e) {
-      throw Exception('POST Request Failed: $e');
+    } on TimeoutException {
+      throw const ApiException(408, ApiFailureKind.timeout);
+    } on ApiException {
+      rethrow;
+    } catch (error, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('[ApiService] $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
+      throw const ApiException(0, ApiFailureKind.connection);
     }
   }
 
@@ -41,21 +56,19 @@ class ApiService {
         return jsonDecode(response.body);
 
       case 400:
-        throw Exception('Bad Request');
+        throw const ApiException(400, ApiFailureKind.validation);
 
       case 401:
-        throw Exception('Unauthorized');
+        throw const ApiException(401, ApiFailureKind.unauthorized);
 
       case 404:
-        throw Exception('Resource Not Found');
+        throw const ApiException(404, ApiFailureKind.notFound);
 
       case 500:
-        throw Exception('Server Error');
+        throw const ApiException(500, ApiFailureKind.serverUnavailable);
 
       default:
-        throw Exception(
-          'Unexpected Error: ${response.statusCode}',
-        );
+        throw ApiException(response.statusCode, ApiFailureKind.unknown);
     }
   }
 }

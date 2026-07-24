@@ -1,0 +1,9 @@
+RewriteEngine On
+
+# Avatar files pass through the front controller to receive API CORS headers.
+RewriteRule ^uploads/avatars/ index.php [QSA,L]
+
+# Let Apache serve real files directly; route API requests through the PHP front controller.
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.php [QSA,L]

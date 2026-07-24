@@ -1,3 +1,5 @@
+import 'api_value_parser.dart';
+
 class BlockedUrlModel {
   final String id;
   final String userId;
@@ -13,23 +15,16 @@ class BlockedUrlModel {
     this.blockedAt,
   });
 
-  static DateTime _parseUtc(String dateStr) {
-    if (!dateStr.endsWith('Z') && !dateStr.contains('+') && !dateStr.contains('-')) {
-      final normalized = dateStr.replaceAll(' ', 'T');
-      return DateTime.parse('${normalized}Z').toLocal();
-    }
-    return DateTime.parse(dateStr).toLocal();
-  }
-
   factory BlockedUrlModel.fromJson(Map<String, dynamic> json) {
     return BlockedUrlModel(
-      id: json['id'] as String? ?? DateTime.now().millisecondsSinceEpoch.toString(),
-      userId: json['user_id'] as String? ?? '',
-      url: json['url'] as String? ?? '',
-      reason: json['reason'] as String?,
-      blockedAt: json['blocked_at'] != null
-          ? _parseUtc(json['blocked_at'] as String)
-          : null,
+      id: apiString(
+        json['id'],
+        fallback: DateTime.now().millisecondsSinceEpoch.toString(),
+      ),
+      userId: apiString(json['user_id']),
+      url: apiString(json['url']),
+      reason: apiNullableString(json['reason']),
+      blockedAt: apiDateTime(json['blocked_at']),
     );
   }
 

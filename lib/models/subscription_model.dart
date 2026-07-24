@@ -1,3 +1,5 @@
+import 'api_value_parser.dart';
+
 class SubscriptionModel {
   final String subscriptionId;
   final String userId;
@@ -31,38 +33,25 @@ class SubscriptionModel {
     this.updatedAt,
   });
 
-  static DateTime _parseUtc(String dateStr) {
-    if (!dateStr.endsWith('Z') && !dateStr.contains('+') && !dateStr.contains('-')) {
-      final normalized = dateStr.replaceAll(' ', 'T');
-      return DateTime.parse('${normalized}Z').toLocal();
-    }
-    return DateTime.parse(dateStr).toLocal();
-  }
-
   factory SubscriptionModel.fromJson(Map<String, dynamic> json) {
     return SubscriptionModel(
-      subscriptionId: json['subscription_id'] as String,
-      userId: json['user_id'] as String,
-      planId: json['plan_id'] as String,
-      status: json['status'] as String? ?? 'pending',
-      paymentProvider: json['payment_provider'] as String? ?? 'razorpay',
-      paymentId: json['payment_id'] as String?,
-      orderId: json['order_id'] as String?,
-      paymentSignature: json['payment_signature'] as String?,
-      amount: (json['amount'] as num?)?.toDouble(),
-      currency: json['currency'] as String? ?? 'INR',
-      startDate: json['start_date'] != null
-          ? _parseUtc(json['start_date'] as String)
-          : null,
-      expiryDate: json['expiry_date'] != null
-          ? _parseUtc(json['expiry_date'] as String)
-          : null,
-      createdAt: json['created_at'] != null
-          ? _parseUtc(json['created_at'] as String)
-          : null,
-      updatedAt: json['updated_at'] != null
-          ? _parseUtc(json['updated_at'] as String)
-          : null,
+      subscriptionId: apiString(json['subscription_id'] ?? json['id']),
+      userId: apiString(json['user_id']),
+      planId: apiString(json['plan_id']),
+      status: apiString(json['status'], fallback: 'pending'),
+      paymentProvider: apiString(
+        json['payment_provider'],
+        fallback: 'razorpay',
+      ),
+      paymentId: apiNullableString(json['payment_id']),
+      orderId: apiNullableString(json['order_id']),
+      paymentSignature: apiNullableString(json['payment_signature']),
+      amount: json['amount'] == null ? null : apiDouble(json['amount']),
+      currency: apiString(json['currency'], fallback: 'INR'),
+      startDate: apiDateTime(json['start_date']),
+      expiryDate: apiDateTime(json['expiry_date']),
+      createdAt: apiDateTime(json['created_at']),
+      updatedAt: apiDateTime(json['updated_at']),
     );
   }
 
@@ -83,5 +72,7 @@ class SubscriptionModel {
     };
   }
 
-  bool get isActive => status == 'active' && (expiryDate == null || expiryDate!.isAfter(DateTime.now()));
+  bool get isActive =>
+      status == 'active' &&
+      (expiryDate == null || expiryDate!.isAfter(DateTime.now()));
 }

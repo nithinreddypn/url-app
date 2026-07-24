@@ -1,3 +1,5 @@
+import 'api_value_parser.dart';
+
 class PlanModel {
   final String planId;
   final String name;
@@ -20,21 +22,15 @@ class PlanModel {
   });
 
   factory PlanModel.fromJson(Map<String, dynamic> json) {
-    var rawFeatures = json['features'];
-    List<String> featuresList = [];
-    if (rawFeatures is List) {
-      featuresList = List<String>.from(rawFeatures);
-    }
-
     return PlanModel(
-      planId: json['plan_id'] as String,
-      name: json['name'] as String,
-      description: json['description'] as String?,
-      durationMonths: json['duration_months'] as int? ?? 0,
-      price: (json['price'] as num? ?? 0).toDouble(),
-      currency: json['currency'] as String? ?? 'INR',
-      features: featuresList,
-      isActive: json['is_active'] as bool? ?? true,
+      planId: apiString(json['plan_id'] ?? json['id']),
+      name: apiString(json['name']),
+      description: apiNullableString(json['description']),
+      durationMonths: apiInt(json['duration_months']),
+      price: apiDouble(json['price']),
+      currency: apiString(json['currency'], fallback: 'INR'),
+      features: apiStringList(json['features']),
+      isActive: apiBool(json['is_active'], fallback: true),
     );
   }
 

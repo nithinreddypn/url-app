@@ -1,7 +1,10 @@
+import 'api_value_parser.dart';
+
 class UserModel {
   final String userId;
   final String username;
   final String email;
+  final String? avatarUrl;
   final String role;
   final DateTime? createdAt;
   final DateTime? updatedAt;
@@ -13,6 +16,7 @@ class UserModel {
     required this.userId,
     required this.username,
     required this.email,
+    this.avatarUrl,
     this.role = 'user',
     this.createdAt,
     this.updatedAt,
@@ -21,36 +25,19 @@ class UserModel {
     this.lifetimeScanCount = 0,
   });
 
-  static DateTime _parseUtc(String dateStr) {
-    // Supabase returns naive timestamps like '2026-06-25 07:54:54.39986'
-    // without timezone info. We need to treat them as UTC.
-    final hasTimezone = dateStr.endsWith('Z') ||
-        RegExp(r'[+-]\d{2}:\d{2}$').hasMatch(dateStr) ||
-        RegExp(r'[+-]\d{4}$').hasMatch(dateStr);
-    if (!hasTimezone) {
-      final normalized = dateStr.replaceAll(' ', 'T');
-      return DateTime.parse('${normalized}Z').toLocal();
-    }
-    return DateTime.parse(dateStr).toLocal();
-  }
-
   factory UserModel.fromJson(Map<String, dynamic> json) {
+    final plan = apiString(json['plan'], fallback: 'free');
     return UserModel(
-      userId: json['user_id'] as String,
-      username: json['username'] as String? ?? '',
-      email: json['email'] as String? ?? '',
-      role: json['role'] as String? ?? 'user',
-      createdAt: json['created_at'] != null
-          ? _parseUtc(json['created_at'] as String)
-          : null,
-      updatedAt: json['updated_at'] != null
-          ? _parseUtc(json['updated_at'] as String)
-          : null,
-      blockedList: json['blocked_list'] != null
-          ? List<String>.from(json['blocked_list'] as List)
-          : const [],
-      isPremium: json['is_premium'] as bool? ?? false,
-      lifetimeScanCount: json['lifetime_scan_count'] as int? ?? 0,
+      userId: apiString(json['user_id'] ?? json['id']),
+      username: apiString(json['username'] ?? json['full_name']),
+      email: apiString(json['email']),
+      avatarUrl: apiNullableString(json['avatar_url']),
+      role: apiString(json['role'], fallback: 'user'),
+      createdAt: apiDateTime(json['created_at']),
+      updatedAt: apiDateTime(json['updated_at']),
+      blockedList: apiStringList(json['blocked_list']),
+      isPremium: apiBool(json['is_premium'], fallback: plan != 'free'),
+      lifetimeScanCount: apiInt(json['lifetime_scan_count']),
     );
   }
 
@@ -59,7 +46,10 @@ class UserModel {
       'user_id': userId,
       'username': username,
       'email': email,
+      'avatar_url': avatarUrl,
       'role': role,
+      'created_at': createdAt?.toIso8601String(),
+      'updated_at': updatedAt?.toIso8601String(),
       'blocked_list': blockedList,
       'is_premium': isPremium,
       'lifetime_scan_count': lifetimeScanCount,
@@ -70,6 +60,7 @@ class UserModel {
     String? userId,
     String? username,
     String? email,
+    String? avatarUrl,
     String? role,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -81,6 +72,7 @@ class UserModel {
       userId: userId ?? this.userId,
       username: username ?? this.username,
       email: email ?? this.email,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
       role: role ?? this.role,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,

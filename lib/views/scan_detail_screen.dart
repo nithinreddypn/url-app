@@ -1,4 +1,3 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +8,11 @@ import '../models/url_scan_model.dart';
 import '../services/url_scan_service.dart';
 import '../providers/app_providers.dart';
 import '../services/alert_service.dart';
+import '../services/error_handler.dart';
+import '../pages/app/scan_result/security_identifiers_section.dart';
+import 'widgets/report_url_form.dart';
+import 'report_flow/report_flow_wizard.dart';
+import 'widgets/community_cards.dart';
 
 class ScanDetailScreen extends ConsumerStatefulWidget {
   final String scanId;
@@ -23,8 +27,8 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
   Color get _cardColor => context.cardBg;
   Color get _surfaceColor => context.border;
   Color get _primaryGreen => context.activeAccent;
-  Color get _amber => context.isDark ? const Color(0xFFF59E0B) : const Color(0xFFD97706);
-  Color get _red => context.isDark ? const Color(0xFFEF4444) : const Color(0xFFDC2626);
+  Color get _amber => context.warning;
+  Color get _red => context.danger;
   Color get _textPrimary => context.textPrimary;
   Color get _textSecondary => context.textMuted;
 
@@ -32,6 +36,31 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
   UrlScanModel? _scan;
   bool _isLoading = true;
   String? _errorMsg;
+
+  Map<String, dynamic>? _communityStatus;
+  bool _loadingCommunity = false;
+
+  Future<void> _fetchCommunityStatus(String url) async {
+    setState(() {
+      _loadingCommunity = true;
+    });
+    try {
+      final service = ref.read(communityThreatServiceProvider);
+      final status = await service.checkStatus(url);
+      if (mounted) {
+        setState(() {
+          _communityStatus = status;
+        });
+      }
+    } catch (_) {
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingCommunity = false;
+        });
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -52,7 +81,10 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
       }
 
       // Fetch scan by scanId from local scans database
-      final scanResult = await _scanService.getScanById(widget.scanId, userId: user.userId);
+      final scanResult = await _scanService.getScanById(
+        widget.scanId,
+        userId: user.userId,
+      );
       if (scanResult == null) {
         throw Exception('Scan record not found');
       }
@@ -62,11 +94,13 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
           _scan = scanResult;
           _isLoading = false;
         });
+        _fetchCommunityStatus(scanResult.scannedUrl);
       }
-    } catch (e) {
+    } catch (error, stackTrace) {
       if (mounted) {
+        final mapped = ErrorHandler.handle(error, stackTrace);
         setState(() {
-          _errorMsg = e.toString().replaceAll('Exception: ', '');
+          _errorMsg = mapped.message;
           _isLoading = false;
         });
       }
@@ -113,26 +147,47 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
               const SizedBox(width: 12),
               Text(
                 'Security Warning',
-                style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  color: _textPrimary,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ],
           ),
           content: Text(
             'This site was flagged as DANGEROUS (${_scan!.threatType ?? "malicious"}). Continuing may expose your device to security threats. Are you sure you want to proceed?',
-            style: const TextStyle(color: Color(0xFF8E8E93), fontSize: 14, height: 1.4),
+            style: const TextStyle(
+              color: Color(0xFF8E8E93),
+              fontSize: 14,
+              height: 1.4,
+            ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel', style: TextStyle(color: Color(0xFF8E8E93), fontWeight: FontWeight.w600)),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(
+                  color: Color(0xFF8E8E93),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
             ElevatedButton(
               onPressed: () => Navigator.pop(ctx, true),
               style: ElevatedButton.styleFrom(
                 backgroundColor: _red,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
-              child: const Text('Open Anyway', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              child: const Text(
+                'Open Anyway',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ],
         ),
@@ -146,7 +201,8 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
 
   Future<void> _launchExternalUrl(String urlString) async {
     String formattedUrl = urlString.trim();
-    if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
+    if (!formattedUrl.startsWith('http://') &&
+        !formattedUrl.startsWith('https://')) {
       formattedUrl = 'https://$formattedUrl';
     }
     final uri = Uri.parse(formattedUrl);
@@ -155,7 +211,10 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       } else {
         if (!mounted) return;
-        AlertService.showError(context, 'Could not launch the URL $formattedUrl');
+        AlertService.showError(
+          context,
+          'Could not launch the URL $formattedUrl',
+        );
       }
     } catch (e) {
       if (!mounted) return;
@@ -165,13 +224,10 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
 
   void _copyToClipboard(String text) {
     Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('URL copied to clipboard'),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: _primaryGreen,
-        duration: const Duration(seconds: 2),
-      ),
+    AlertService.showSuccess(
+      context,
+      'Copied',
+      'URL copied to your clipboard.',
     );
   }
 
@@ -182,18 +238,28 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: _cardColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('Delete Record', style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold)),
-        content: const Text('Are you sure you want to permanently delete this scan record from your history?'),
+        title: Text(
+          'Delete Record',
+          style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold),
+        ),
+        content: const Text(
+          'Are you sure you want to permanently delete this scan record from your history?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel', style: TextStyle(color: Color(0xFF8E8E93))),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Color(0xFF8E8E93)),
+            ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(
               backgroundColor: _red,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
             ),
             child: const Text('Delete', style: TextStyle(color: Colors.white)),
           ),
@@ -212,11 +278,10 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
         ref.invalidate(dangerousScansProvider);
 
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Scan record deleted'),
-              behavior: SnackBarBehavior.floating,
-            ),
+          AlertService.showSuccess(
+            context,
+            'Scan Deleted',
+            'The scan record was removed from your history.',
           );
           context.pop();
         }
@@ -226,6 +291,18 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
         }
       }
     }
+  }
+
+  void _handleReportThreat() {
+    if (_scan == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ReportFlowWizard(initialUrl: _scan!.scannedUrl),
+      ),
+    ).then((_) {
+      _fetchCommunityStatus(_scan!.scannedUrl);
+    });
   }
 
   Future<void> _handleRescan() async {
@@ -250,11 +327,10 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
           _scan = result;
           _isLoading = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('URL rescanned successfully'),
-            behavior: SnackBarBehavior.floating,
-          ),
+        AlertService.showSuccess(
+          context,
+          'Scan Complete',
+          'The URL was rescanned successfully.',
         );
       }
     } catch (e) {
@@ -267,20 +343,162 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
 
   void _handleShare() {
     if (_scan == null) return;
-    final text = 'URL Defender Scan Detail:\n'
+    final text =
+        'URL Defender Scan Detail:\n'
         'URL: ${_scan!.scannedUrl}\n'
         'Result: ${_scan!.scanResult?.toUpperCase() ?? "UNKNOWN"}\n'
         'Risk Score: ${_scan!.riskScore ?? 0}%\n'
         'Threat Type: ${_scan!.threatType ?? "None"}\n'
         'Scanned on: ${_scan!.scannedAt ?? "N/A"}';
-    Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Detail report summary copied to share!'),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: _primaryGreen,
-      ),
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext ctx) {
+        return Container(
+          decoration: BoxDecoration(
+            color: _cardColor,
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
+            ),
+            border: Border.all(
+              color: _surfaceColor,
+              width: 1,
+            ),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 38,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: _textSecondary.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  'Share Scan Report',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: _textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildShareOption(
+                      icon: Icons.chat_bubble_outline_rounded,
+                      label: 'WhatsApp',
+                      color: const Color(0xFF25D366),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _launchShareUrl('https://api.whatsapp.com/send?text=${Uri.encodeComponent(text)}');
+                      },
+                    ),
+                    _buildShareOption(
+                      icon: Icons.send_rounded,
+                      label: 'Telegram',
+                      color: const Color(0xFF0088CC),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _launchShareUrl('https://t.me/share/url?url=${Uri.encodeComponent(_scan!.scannedUrl)}&text=${Uri.encodeComponent(text)}');
+                      },
+                    ),
+                    _buildShareOption(
+                      icon: Icons.email_outlined,
+                      label: 'Email',
+                      color: _primaryGreen,
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _launchShareUrl('mailto:?subject=${Uri.encodeComponent("URL Defender Scan Report")}&body=${Uri.encodeComponent(text)}');
+                      },
+                    ),
+                    _buildShareOption(
+                      icon: Icons.content_copy_rounded,
+                      label: 'Copy Text',
+                      color: _textSecondary,
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        Clipboard.setData(ClipboardData(text: text));
+                        AlertService.showSuccess(
+                          context,
+                          'Report Copied',
+                          'The summary was copied to the clipboard.',
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
+  }
+
+  Widget _buildShareOption({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Column(
+      children: [
+        InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: color.withOpacity(0.2),
+                width: 1,
+              ),
+            ),
+            child: Icon(icon, color: color, size: 24),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          label,
+          style: TextStyle(
+            color: _textSecondary,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _launchShareUrl(String urlString) async {
+    try {
+      final uri = Uri.parse(urlString);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        throw Exception('Could not launch URL');
+      }
+    } catch (_) {
+      if (mounted) {
+        AlertService.showError(context, 'Failed to launch social sharing app.');
+      }
+    }
   }
 
   @override
@@ -365,7 +583,9 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
       mockAgeText = '${(hashVal % 8) + 3} years ago';
     }
 
-    final mockBlacklistsCount = riskScore >= 60 ? (hashVal % 4) + 2 : (riskScore >= 30 ? 1 : 0);
+    final mockBlacklistsCount = riskScore >= 60
+        ? (hashVal % 4) + 2
+        : (riskScore >= 30 ? 1 : 0);
 
     // Deterministic engines status
     final enginesList = [
@@ -378,7 +598,7 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
       'ESET Web Protection',
       'McAfee WebAdvisor',
       'Fortinet Web Guard',
-      'Cisco Umbrella'
+      'Cisco Umbrella',
     ];
 
     final flaggedEngines = <String>[];
@@ -406,45 +626,71 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
     final dangerReasons = <String>[];
     if (riskScore >= 30) {
       if (flaggedEngines.contains('Google Safe Browsing')) {
-        dangerReasons.add('Listed by Google Safe Browsing as a phishing threat targeting login credentials.');
+        dangerReasons.add(
+          'Listed by Google Safe Browsing as a phishing threat targeting login credentials.',
+        );
       }
       if (flaggedEngines.contains('Kaspersky Threat Intel')) {
-        dangerReasons.add('Kaspersky threat intelligence feed identified hosting malware / exploits.');
+        dangerReasons.add(
+          'Kaspersky threat intelligence feed identified hosting malware / exploits.',
+        );
       }
       if (flaggedEngines.contains('BitDefender Web Shield')) {
-        dangerReasons.add('Detected by BitDefender Web Shield as a deceptive phishing domain.');
+        dangerReasons.add(
+          'Detected by BitDefender Web Shield as a deceptive phishing domain.',
+        );
       }
       if (flaggedEngines.contains('Symantec Web Filter')) {
-        dangerReasons.add('Symantec spam filters flagged this host for fraudulent campaign links.');
+        dangerReasons.add(
+          'Symantec spam filters flagged this host for fraudulent campaign links.',
+        );
       }
       if (flaggedEngines.contains('Avira SafeShield')) {
-        dangerReasons.add('Avira SafeShield identified script injections and exploit kits on landing pages.');
+        dangerReasons.add(
+          'Avira SafeShield identified script injections and exploit kits on landing pages.',
+        );
       }
       if (flaggedEngines.contains('Sophos Web Control')) {
-        dangerReasons.add('Sophos web controls categorized this domain as potentially unwanted (PUA).');
+        dangerReasons.add(
+          'Sophos web controls categorized this domain as potentially unwanted (PUA).',
+        );
       }
       if (flaggedEngines.contains('ESET Web Protection')) {
-        dangerReasons.add('ESET web scanning engine blacklisted this URL for domain impersonation.');
+        dangerReasons.add(
+          'ESET web scanning engine blacklisted this URL for domain impersonation.',
+        );
       }
       if (flaggedEngines.contains('McAfee WebAdvisor')) {
-        dangerReasons.add('McAfee WebAdvisor warning: High threat vulnerability profile.');
+        dangerReasons.add(
+          'McAfee WebAdvisor warning: High threat vulnerability profile.',
+        );
       }
       if (flaggedEngines.contains('Fortinet Web Guard')) {
-        dangerReasons.add('Fortinet security nodes flagged this as an active command & control beacon.');
+        dangerReasons.add(
+          'Fortinet security nodes flagged this as an active command & control beacon.',
+        );
       }
       if (flaggedEngines.contains('Cisco Umbrella')) {
-        dangerReasons.add('Cisco Umbrella DNS resolver identified this host in automated spam feeds.');
+        dangerReasons.add(
+          'Cisco Umbrella DNS resolver identified this host in automated spam feeds.',
+        );
       }
 
       // Add baseline check fails
       if (!isHttps) {
-        dangerReasons.add('Unencrypted http connection exposes passwords and user data.');
+        dangerReasons.add(
+          'Unencrypted http connection exposes passwords and user data.',
+        );
       }
       if (riskScore >= 60) {
-        dangerReasons.add('Extremely young registration profile ($mockAgeText) matching transient phishing setups.');
+        dangerReasons.add(
+          'Extremely young registration profile ($mockAgeText) matching transient phishing setups.',
+        );
       }
       if (mockBlacklistsCount > 0) {
-        dangerReasons.add('Listed on $mockBlacklistsCount global threat intelligence blacklists.');
+        dangerReasons.add(
+          'Listed on $mockBlacklistsCount global threat intelligence blacklists.',
+        );
       }
     }
 
@@ -474,6 +720,8 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
                 _handleRescan();
               } else if (val == 'share') {
                 _handleShare();
+              } else if (val == 'report') {
+                _handleReportThreat();
               } else if (val == 'delete') {
                 _handleDeleteScan();
               }
@@ -500,6 +748,16 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
                 ),
               ),
               PopupMenuItem(
+                value: 'report',
+                child: Row(
+                  children: [
+                    Icon(Icons.report_problem_outlined, color: _red, size: 18),
+                    const SizedBox(width: 8),
+                    Text('Report Threat', style: TextStyle(color: _red)),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
                 value: 'delete',
                 child: Row(
                   children: [
@@ -510,7 +768,7 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
                 ),
               ),
             ],
-          )
+          ),
         ],
       ),
       floatingActionButton: _buildFloatingActionButton(),
@@ -520,8 +778,29 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // ── Status Section ──
-            _buildStatusCard(scan, statusColor, statusLabel, statusIcon, riskScore),
+            _buildStatusCard(
+              scan,
+              statusColor,
+              statusLabel,
+              statusIcon,
+              riskScore,
+            ),
             const SizedBox(height: 20),
+
+            if (_communityStatus != null &&
+                _communityStatus!['status'] != 'clean' &&
+                _communityStatus!['data'] != null) ...[
+              if (_communityStatus!['status'] == 'verified')
+                CommunityIntelligenceCard(
+                  data: Map<String, dynamic>.from(_communityStatus!['data'] as Map),
+                  reportId: (_communityStatus!['data']['id'] ?? _communityStatus!['data']['url_hash'] ?? '').toString(),
+                )
+              else
+                PendingCommunityCard(
+                  data: Map<String, dynamic>.from(_communityStatus!['data'] as Map),
+                ),
+              const SizedBox(height: 20),
+            ],
 
             // ── Why is this dangerous? Section ──
             if (riskScore >= 30 && dangerReasons.isNotEmpty) ...[
@@ -530,7 +809,13 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
             ],
 
             // ── Details Section ──
-            _buildDetailGrid(scan, mockAgeText, mockSslText, isSslValid, mockBlacklistsCount),
+            _buildDetailGrid(
+              scan,
+              mockAgeText,
+              mockSslText,
+              isSslValid,
+              mockBlacklistsCount,
+            ),
             const SizedBox(height: 20),
 
             // ── Detection Engines Section ──
@@ -549,7 +834,13 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
     );
   }
 
-  Widget _buildStatusCard(UrlScanModel scan, Color statusColor, String statusLabel, IconData statusIcon, int riskScore) {
+  Widget _buildStatusCard(
+    UrlScanModel scan,
+    Color statusColor,
+    String statusLabel,
+    IconData statusIcon,
+    int riskScore,
+  ) {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -657,9 +948,16 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
                 const SizedBox(width: 8),
                 IconButton(
                   onPressed: () => _copyToClipboard(scan.scannedUrl),
-                  icon: Icon(Icons.copy_rounded, size: 16, color: _textSecondary),
+                  icon: Icon(
+                    Icons.copy_rounded,
+                    size: 16,
+                    color: _textSecondary,
+                  ),
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minHeight: 32, minWidth: 32),
+                  constraints: const BoxConstraints(
+                    minHeight: 32,
+                    minWidth: 32,
+                  ),
                   tooltip: 'Copy URL',
                 ),
               ],
@@ -669,8 +967,18 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
           // Open URL Button
           ElevatedButton.icon(
             onPressed: _handleOpenUrl,
-            icon: const Icon(Icons.open_in_new_rounded, size: 16, color: Colors.white),
-            label: const Text('Open URL', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            icon: const Icon(
+              Icons.open_in_new_rounded,
+              size: 16,
+              color: Colors.white,
+            ),
+            label: const Text(
+              'Open URL',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
             style: ElevatedButton.styleFrom(
               backgroundColor: statusColor,
               padding: const EdgeInsets.symmetric(vertical: 12),
@@ -713,282 +1021,61 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          ...reasons.map((reason) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2.5),
-                      child: Icon(Icons.arrow_right_rounded, size: 14, color: statusColor),
+          ...reasons.map(
+            (reason) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2.5),
+                    child: Icon(
+                      Icons.arrow_right_rounded,
+                      size: 14,
+                      color: statusColor,
                     ),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        reason,
-                        style: TextStyle(
-                          color: _textPrimary.withValues(alpha: 0.8),
-                          fontSize: 13,
-                          height: 1.4,
-                          fontWeight: FontWeight.w500,
-                        ),
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      reason,
+                      style: TextStyle(
+                        color: _textPrimary.withValues(alpha: 0.8),
+                        fontSize: 13,
+                        height: 1.4,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
-                  ],
-                ),
-              )),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDetailGrid(UrlScanModel scan, String ageText, String sslText, bool isSslValid, int blacklists) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Security Identifiers',
-          style: TextStyle(
-            color: _textPrimary,
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 10),
-        GridView.count(
-          crossAxisCount: 2,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          childAspectRatio: 1.35,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-          children: [
-            _buildSslCard(sslText, isSslValid),
-            _buildAgeCard(ageText, (scan.riskScore ?? 0) >= 60),
-            _buildThreatCategoryCard(scan.threatType),
-            _buildBlacklistCard(blacklists),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSslCard(String text, bool isValid) {
-    final statusColor = isValid ? _primaryGreen : _red;
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: _cardColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _surfaceColor),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(isValid ? Icons.lock_outline_rounded : Icons.lock_open_rounded, size: 14, color: statusColor),
-              const SizedBox(width: 6),
-              Text(
-                'SSL Status',
-                style: TextStyle(color: _textSecondary, fontSize: 10.5, fontWeight: FontWeight.w700),
-              ),
-            ],
-          ),
-          const Spacer(),
-          Row(
-            children: List.generate(3, (idx) {
-              return Expanded(
-                child: Container(
-                  height: 3,
-                  margin: EdgeInsets.only(right: idx < 2 ? 4.0 : 0.0),
-                  decoration: BoxDecoration(
-                    color: isValid 
-                        ? _primaryGreen.withValues(alpha: 0.8) 
-                        : (text.contains('No SSL') ? _surfaceColor : _red),
-                    borderRadius: BorderRadius.circular(2),
                   ),
-                ),
-              );
-            }),
-          ),
-          const Spacer(),
-          Text(
-            text,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: _textPrimary, fontSize: 11.5, fontWeight: FontWeight.w800),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAgeCard(String text, bool isNew) {
-    final double ageProgress = isNew ? 0.20 : 0.85;
-    final progressColor = isNew ? _amber : _primaryGreen;
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: _cardColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _surfaceColor),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.calendar_today_rounded, size: 14, color: progressColor),
-              const SizedBox(width: 6),
-              Text(
-                'Domain Age',
-                style: TextStyle(color: _textSecondary, fontSize: 10.5, fontWeight: FontWeight.w700),
-              ),
-            ],
-          ),
-          const Spacer(),
-          Stack(
-            alignment: Alignment.centerLeft,
-            children: [
-              Container(
-                height: 3,
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: _surfaceColor.withValues(alpha: 0.4),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              FractionallySizedBox(
-                widthFactor: ageProgress,
-                child: Container(
-                  height: 3,
-                  decoration: BoxDecoration(
-                    color: progressColor,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const Spacer(),
-          Text(
-            text,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: _textPrimary, fontSize: 11.5, fontWeight: FontWeight.w800),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildThreatCategoryCard(String? threatType) {
-    final hasThreat = threatType != null;
-    final statusColor = hasThreat ? _red : _primaryGreen;
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: _cardColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _surfaceColor),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.category_rounded, size: 14, color: statusColor),
-              const SizedBox(width: 6),
-              Text(
-                'Threat Category',
-                style: TextStyle(color: _textSecondary, fontSize: 10.5, fontWeight: FontWeight.w700),
-              ),
-            ],
-          ),
-          const Spacer(),
-          Container(
-            height: 3,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: statusColor.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(2),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(2),
-              child: LinearProgressIndicator(
-                value: hasThreat ? 1.0 : 0.0,
-                backgroundColor: _primaryGreen.withValues(alpha: 0.2),
-                valueColor: AlwaysStoppedAnimation<Color>(statusColor),
+                ],
               ),
             ),
           ),
-          const Spacer(),
-          Text(
-            threatType ?? 'Clean Site',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: _textPrimary, fontSize: 11.5, fontWeight: FontWeight.w800),
-          ),
         ],
       ),
     );
   }
 
-  Widget _buildBlacklistCard(int blacklists) {
-    final hasBlacklist = blacklists > 0;
-    final statusColor = hasBlacklist ? _red : _primaryGreen;
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: _cardColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _surfaceColor),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.security_rounded, size: 14, color: statusColor),
-              const SizedBox(width: 6),
-              Text(
-                'Intel Blacklists',
-                style: TextStyle(color: _textSecondary, fontSize: 10.5, fontWeight: FontWeight.w700),
-              ),
-            ],
-          ),
-          const Spacer(),
-          Row(
-            children: List.generate(4, (idx) {
-              final fill = blacklists > idx;
-              return Expanded(
-                child: Container(
-                  height: 3,
-                  margin: EdgeInsets.only(right: idx < 3 ? 3.0 : 0.0),
-                  decoration: BoxDecoration(
-                    color: hasBlacklist
-                        ? (fill ? _red : _surfaceColor.withValues(alpha: 0.4))
-                        : _primaryGreen,
-                    borderRadius: BorderRadius.circular(1.5),
-                  ),
-                ),
-              );
-            }),
-          ),
-          const Spacer(),
-          Text(
-            blacklists == 0 ? 'Not Listed' : 'Listed on $blacklists feeds',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: _textPrimary, fontSize: 11.5, fontWeight: FontWeight.w800),
-          ),
-        ],
-      ),
+  Widget _buildDetailGrid(
+    UrlScanModel scan,
+    String ageText,
+    String sslText,
+    bool isSslValid,
+    int blacklists,
+  ) {
+    return SecurityIdentifiersSection(
+      scan: scan,
+      ageText: ageText,
+      sslText: sslText,
+      isSslValid: isSslValid,
+      blacklists: blacklists,
     );
   }
 
-  Widget _buildDetectionEnginesSection(List<String> flagged, List<String> clean) {
+  Widget _buildDetectionEnginesSection(
+    List<String> flagged,
+    List<String> clean,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1017,7 +1104,11 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
                     const SizedBox(width: 6),
                     Text(
                       'Flagged Detections (${flagged.length})',
-                      style: TextStyle(color: _red, fontSize: 12, fontWeight: FontWeight.w800),
+                      style: TextStyle(
+                        color: _red,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ],
                 ),
@@ -1026,36 +1117,55 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
                   spacing: 8,
                   runSpacing: 6,
                   children: flagged
-                      .map((engine) => Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: _red.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: _red.withValues(alpha: 0.3)),
+                      .map(
+                        (engine) => Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _red.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: _red.withValues(alpha: 0.3),
                             ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.flag_rounded, size: 12, color: _red),
-                                const SizedBox(width: 4),
-                                Text(
-                                  engine,
-                                  style: TextStyle(color: _red, fontSize: 11, fontWeight: FontWeight.w700),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.flag_rounded, size: 12, color: _red),
+                              const SizedBox(width: 4),
+                              Text(
+                                engine,
+                                style: TextStyle(
+                                  color: _red,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
                                 ),
-                              ],
-                            ),
-                          ))
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
                       .toList(),
                 ),
                 const Divider(height: 20),
               ],
               Row(
                 children: [
-                  Icon(Icons.check_circle_outline_rounded, size: 14, color: _primaryGreen),
+                  Icon(
+                    Icons.check_circle_outline_rounded,
+                    size: 14,
+                    color: _primaryGreen,
+                  ),
                   const SizedBox(width: 6),
                   Text(
                     'Clean / Unflagged (${clean.length})',
-                    style: TextStyle(color: _primaryGreen, fontSize: 12, fontWeight: FontWeight.w800),
+                    style: TextStyle(
+                      color: _primaryGreen,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ],
               ),
@@ -1069,7 +1179,10 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
                     return Padding(
                       padding: const EdgeInsets.only(right: 8),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
                           color: _surfaceColor.withValues(alpha: 0.3),
@@ -1079,11 +1192,19 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.check_rounded, size: 12, color: _primaryGreen),
+                            Icon(
+                              Icons.check_rounded,
+                              size: 12,
+                              color: _primaryGreen,
+                            ),
                             const SizedBox(width: 4),
                             Text(
                               clean[index],
-                              style: TextStyle(color: _textPrimary, fontSize: 11, fontWeight: FontWeight.w600),
+                              style: TextStyle(
+                                color: _textPrimary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ],
                         ),
@@ -1101,7 +1222,8 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
 
   Widget _buildTimelineSection(DateTime? scannedAt) {
     final scanTime = scannedAt ?? DateTime.now();
-    final timeStr = '${scanTime.hour.toString().padLeft(2, '0')}:${scanTime.minute.toString().padLeft(2, '0')}:${scanTime.second.toString().padLeft(2, '0')}';
+    final timeStr =
+        '${scanTime.hour.toString().padLeft(2, '0')}:${scanTime.minute.toString().padLeft(2, '0')}:${scanTime.second.toString().padLeft(2, '0')}';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1124,11 +1246,26 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
           ),
           child: Column(
             children: [
-              _buildTimelineRow('1. URL Submitted', 'Request pushed to scanning queue', timeStr, true),
+              _buildTimelineRow(
+                '1. URL Submitted',
+                'Request pushed to scanning queue',
+                timeStr,
+                true,
+              ),
               _buildTimelineDivider(),
-              _buildTimelineRow('2. DNS & SSL Resolved', 'IP mapped & certificate analyzed', timeStr, true),
+              _buildTimelineRow(
+                '2. DNS & SSL Resolved',
+                'IP mapped & certificate analyzed',
+                timeStr,
+                true,
+              ),
               _buildTimelineDivider(),
-              _buildTimelineRow('3. Engines Assessment Completed', 'VirusTotal database query resolved', timeStr, false),
+              _buildTimelineRow(
+                '3. Engines Assessment Completed',
+                'VirusTotal database query resolved',
+                timeStr,
+                false,
+              ),
             ],
           ),
         ),
@@ -1136,7 +1273,12 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
     );
   }
 
-  Widget _buildTimelineRow(String title, String desc, String time, bool showDotConnector) {
+  Widget _buildTimelineRow(
+    String title,
+    String desc,
+    String time,
+    bool showDotConnector,
+  ) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1175,10 +1317,7 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
               const SizedBox(height: 2),
               Text(
                 desc,
-                style: TextStyle(
-                  color: _textSecondary,
-                  fontSize: 10.5,
-                ),
+                style: TextStyle(color: _textSecondary, fontSize: 10.5),
               ),
             ],
           ),
@@ -1200,7 +1339,8 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
   }
 
   Widget _buildTechnicalDetailsTile(UrlScanModel scan, String ip, int hash) {
-    final mockHeaders = 'HTTP/1.1 200 OK\n'
+    final mockHeaders =
+        'HTTP/1.1 200 OK\n'
         'Server: cloudflare\n'
         'Content-Type: text/html; charset=UTF-8\n'
         'Content-Length: ${(hash % 50000) + 500}\n'
@@ -1213,8 +1353,8 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
 
     final redirectStr = (scan.riskScore ?? 0) >= 30
         ? '${scan.scannedUrl} (HTTP 301)\n'
-            '  ↳ https://secureserve-cdn${(hash % 9) + 1}.net/hop/auth (HTTP 302)\n'
-            '    ↳ https://phish-secure-login-attempt.xyz/session/login'
+              '  ↳ https://secureserve-cdn${(hash % 9) + 1}.net/hop/auth (HTTP 302)\n'
+              '    ↳ https://phish-secure-login-attempt.xyz/session/login'
         : '${scan.scannedUrl}\n  (Direct Connection - No redirects)';
 
     return Theme(
@@ -1256,7 +1396,10 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
                     const SizedBox(height: 12),
                     _buildTechnicalDetailSection('Redirect Chain', redirectStr),
                     const SizedBox(height: 12),
-                    _buildTechnicalDetailSection('Raw Response Headers', mockHeaders),
+                    _buildTechnicalDetailSection(
+                      'Raw Response Headers',
+                      mockHeaders,
+                    ),
                   ],
                 ),
               ),
@@ -1316,8 +1459,15 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
     return FloatingActionButton.extended(
       onPressed: _handleOpenUrl,
       backgroundColor: statusColor,
-      icon: const Icon(Icons.open_in_new_rounded, size: 18, color: Colors.white),
-      label: const Text('Open URL', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      icon: const Icon(
+        Icons.open_in_new_rounded,
+        size: 18,
+        color: Colors.white,
+      ),
+      label: const Text(
+        'Open URL',
+        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+      ),
     );
   }
 
@@ -1357,7 +1507,9 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
         border: Border.all(color: _surfaceColor.withValues(alpha: 0.5)),
       ),
       child: Center(
-        child: CircularProgressIndicator(color: _primaryGreen.withValues(alpha: 0.3)),
+        child: CircularProgressIndicator(
+          color: _primaryGreen.withValues(alpha: 0.3),
+        ),
       ),
     );
   }
@@ -1388,7 +1540,8 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
             ),
             const SizedBox(height: 10),
             Text(
-              _errorMsg ?? 'This scan record was deleted or could not be loaded.',
+              _errorMsg ??
+                  'This scan record was deleted or could not be loaded.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: _textSecondary,
@@ -1399,12 +1552,27 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
             const SizedBox(height: 24),
             ElevatedButton.icon(
               onPressed: () => context.pop(),
-              icon: const Icon(Icons.arrow_back_rounded, size: 16, color: Colors.white),
-              label: const Text('Back to Previous', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              icon: const Icon(
+                Icons.arrow_back_rounded,
+                size: 16,
+                color: Colors.white,
+              ),
+              label: const Text(
+                'Back to Previous',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: _primaryGreen,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
             ),
           ],

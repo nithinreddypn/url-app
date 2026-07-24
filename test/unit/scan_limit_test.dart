@@ -1,12 +1,19 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/widgets.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_defender/services/scan_limit_service.dart';
 import 'package:url_defender/services/url_scan_service.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+
   group('ScanLimitService Tests (50 Free Limits)', () {
     late ScanLimitService scanLimitService;
 
     setUp(() {
+      SharedPreferences.setMockInitialValues({
+        'api_session_token': 'debug-test-session-scan-limit',
+      });
       scanLimitService = ScanLimitService();
     });
 
@@ -14,9 +21,12 @@ void main() {
       final userId = 'test_user_1';
       final scanService = UrlScanService();
       await scanService.deleteScan('all', userId: userId);
-      
+
       for (int i = 0; i < 5; i++) {
-        await scanService.scanUrl(userId: userId, scannedUrl: 'http://test$i.com');
+        await scanService.scanUrl(
+          userId: userId,
+          scannedUrl: 'http://test$i.com',
+        );
       }
 
       final canScan = await scanLimitService.canUserScan(userId);
@@ -30,9 +40,12 @@ void main() {
       final userId = 'test_user_2';
       final scanService = UrlScanService();
       await scanService.deleteScan('all', userId: userId);
-      
+
       for (int i = 0; i < 49; i++) {
-        await scanService.scanUrl(userId: userId, scannedUrl: 'http://test$i.com');
+        await scanService.scanUrl(
+          userId: userId,
+          scannedUrl: 'http://test$i.com',
+        );
       }
 
       final canScan = await scanLimitService.canUserScan(userId);
@@ -46,9 +59,12 @@ void main() {
       final userId = 'test_user_3';
       final scanService = UrlScanService();
       await scanService.deleteScan('all', userId: userId);
-      
+
       for (int i = 0; i < 50; i++) {
-        await scanService.scanUrl(userId: userId, scannedUrl: 'http://test$i.com');
+        await scanService.scanUrl(
+          userId: userId,
+          scannedUrl: 'http://test$i.com',
+        );
       }
 
       final canScan = await scanLimitService.canUserScan(userId);

@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../theme/app_theme.dart';
@@ -10,7 +11,6 @@ import '../models/url_scan_model.dart';
 import '../models/blocked_url_model.dart';
 import '../services/exception_mapper.dart';
 import '../providers/app_providers.dart';
-
 
 class AlertsScreen extends ConsumerStatefulWidget {
   const AlertsScreen({super.key});
@@ -24,8 +24,8 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   Color get _cardColor => context.cardBg;
   Color get _surfaceColor => context.border;
   Color get _primaryGreen => context.activeAccent;
-  Color get _amber => context.isDark ? Color(0xFFF59E0B) : Color(0xFFD97706);
-  Color get _red => context.isDark ? Color(0xFFEF4444) : Color(0xFFDC2626);
+  Color get _amber => context.warning;
+  Color get _red => context.danger;
 
   Color get _textPrimary => context.textPrimary;
   Color get _textSecondary => context.textSecondary;
@@ -33,7 +33,6 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
 
   final UrlScanService _scanService = UrlScanService();
 
-  int _selectedTab = 0; // 0 for Threat Alerts, 1 for Scan History
   List<UrlScanModel> _myDangerousScans = [];
   List<UrlScanModel> _globalBlockedUrls = [];
   List<UrlScanModel> _allScans = [];
@@ -45,7 +44,10 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   String _selectedSeverity = 'All';
   bool _isPremium = false;
 
-  List<UrlScanModel> get _scans => [..._globalBlockedUrls, ..._myDangerousScans];
+  List<UrlScanModel> get _scans => [
+    ..._globalBlockedUrls,
+    ..._myDangerousScans,
+  ];
 
   final List<String> _severityFilters = [
     'All',
@@ -82,8 +84,12 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
       } else {
         _filteredHistoryScans = _allScans.where((scan) {
           final urlMatch = scan.scannedUrl.toLowerCase().contains(query);
-          final resultMatch = (scan.scanResult ?? '').toLowerCase().contains(query);
-          final threatMatch = (scan.threatType ?? '').toLowerCase().contains(query);
+          final resultMatch = (scan.scanResult ?? '').toLowerCase().contains(
+            query,
+          );
+          final threatMatch = (scan.threatType ?? '').toLowerCase().contains(
+            query,
+          );
           return urlMatch || resultMatch || threatMatch;
         }).toList();
       }
@@ -111,46 +117,49 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
         }
         return;
       }
-      
+
       // Fetch user profile to verify premium status
       final user = await UserService().getUser(userId);
       final isPremiumStatus = user?.isPremium ?? false;
 
-      // 1. Fetch user's own scanned dangerous URLs
-      var dangerousScans = await _scanService
-          .getScansByResult('dangerous', userId: userId)
-          .timeout(
-            const Duration(seconds: 10),
-            onTimeout: () => <UrlScanModel>[],
-          );
-
-      // 2. Fetch all user scans for the history subpage
+      // Fetch all personal scans once. Alerts are derived from unsafe verdicts
+      // while History retains the complete scan list.
       var allScans = await _scanService
           .getUserScans(userId)
           .timeout(
             const Duration(seconds: 10),
             onTimeout: () => <UrlScanModel>[],
           );
+      final dangerousScans = allScans.where((scan) {
+        final verdict = scan.scanResult?.toLowerCase();
+        return verdict == 'dangerous' || verdict == 'suspicious';
+      }).toList();
 
-      // 3. Fetch blocked URLs for Premium users ONLY
+      // Fetch blocked URLs for Premium users only.
       List<UrlScanModel> globalBlocked = [];
       if (isPremiumStatus) {
-        final blockedUrls = await BlockedUrlService().getBlockedUrls(userId).timeout(
+        final blockedUrls = await BlockedUrlService()
+            .getBlockedUrls(userId)
+            .timeout(
               const Duration(seconds: 10),
               onTimeout: () => <BlockedUrlModel>[],
             );
-        globalBlocked = blockedUrls.map((b) => UrlScanModel(
-          scanId: b.id,
-          userId: b.userId,
-          scannedUrl: b.url,
-          scanResult: 'dangerous',
-          threatType: b.reason ?? 'Blocked',
-          riskScore: 100, // Critical
-          scannedAt: b.blockedAt ?? DateTime.now(),
-          virusTotalFlags: 5,
-          heuristicHits: 3,
-          communityReports: 10,
-        )).toList();
+        globalBlocked = blockedUrls
+            .map(
+              (b) => UrlScanModel(
+                scanId: b.id,
+                userId: b.userId,
+                scannedUrl: b.url,
+                scanResult: 'dangerous',
+                threatType: b.reason ?? 'Blocked',
+                riskScore: 100, // Critical
+                scannedAt: b.blockedAt ?? DateTime.now(),
+                virusTotalFlags: 5,
+                heuristicHits: 3,
+                communityReports: 10,
+              ),
+            )
+            .toList();
       }
 
       if (mounted) {
@@ -163,8 +172,12 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
             final query = _searchController.text.toLowerCase().trim();
             _filteredHistoryScans = allScans.where((scan) {
               final urlMatch = scan.scannedUrl.toLowerCase().contains(query);
-              final resultMatch = (scan.scanResult ?? '').toLowerCase().contains(query);
-              final threatMatch = (scan.threatType ?? '').toLowerCase().contains(query);
+              final resultMatch = (scan.scanResult ?? '')
+                  .toLowerCase()
+                  .contains(query);
+              final threatMatch = (scan.threatType ?? '')
+                  .toLowerCase()
+                  .contains(query);
               return urlMatch || resultMatch || threatMatch;
             }).toList();
           } else {
@@ -184,32 +197,47 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
           _allScans = [];
           _filteredHistoryScans = [];
           _isPremium = false;
-          _errorMessage = mapped.description;
+          _errorMessage = mapped.message;
         });
       }
     }
   }
 
-  /// Returns the severity label based on risk score ranges
-  String _severityFromScore(int? score) {
-    if (score == null) return 'Unknown';
-    if (score > 80) return 'Critical';
-    if (score > 50) return 'High';
-    if (score > 20) return 'Medium';
-    return 'Low';
+  String _severityForScan(UrlScanModel scan) {
+    final score = scan.riskScore ?? 0;
+    switch (scan.scanResult?.toLowerCase()) {
+      case 'dangerous':
+        return score >= 85 ? 'Critical' : 'High';
+      case 'suspicious':
+        return score >= 60 ? 'Medium' : 'Low';
+      case 'safe':
+        return 'Low';
+      default:
+        return 'Unknown';
+    }
+  }
+
+  String _alertTitle(UrlScanModel scan, {bool isGlobal = false}) {
+    if (isGlobal) return 'Known threat blocked';
+    return switch (scan.scanResult?.toLowerCase()) {
+      'dangerous' => 'Malicious URL detected',
+      'suspicious' => 'Suspicious URL flagged',
+      'safe' => 'No threats detected',
+      _ => 'Scan result available',
+    };
   }
 
   List<UrlScanModel> get _filteredDangerousScans {
     if (_selectedSeverity == 'All') return _myDangerousScans;
     return _myDangerousScans
-        .where((s) => _severityFromScore(s.riskScore) == _selectedSeverity)
+        .where((s) => _severityForScan(s) == _selectedSeverity)
         .toList();
   }
 
   List<UrlScanModel> get _filteredGlobalBlockedUrls {
     if (_selectedSeverity == 'All') return _globalBlockedUrls;
     return _globalBlockedUrls
-        .where((s) => _severityFromScore(s.riskScore) == _selectedSeverity)
+        .where((s) => _severityForScan(s) == _selectedSeverity)
         .toList();
   }
 
@@ -268,27 +296,30 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     return '${(diff.inDays / 365).floor()} years ago';
   }
 
-  
-
   @override
   Widget build(BuildContext context) {
+    final selectedTab = ref.watch(alertsTabProvider);
     ref.watch(dangerousScansProvider).whenData((scans) {
       _myDangerousScans = scans;
     });
 
     ref.watch(blockedUrlsProvider).whenData((blocked) {
-      _globalBlockedUrls = blocked.map((b) => UrlScanModel(
-        scanId: b.id,
-        userId: b.userId,
-        scannedUrl: b.url,
-        scanResult: 'dangerous',
-        threatType: b.reason ?? 'Blocked',
-        riskScore: 100, // Critical
-        scannedAt: b.blockedAt ?? DateTime.now(),
-        virusTotalFlags: 5,
-        heuristicHits: 3,
-        communityReports: 10,
-      )).toList();
+      _globalBlockedUrls = blocked
+          .map(
+            (b) => UrlScanModel(
+              scanId: b.id,
+              userId: b.userId,
+              scannedUrl: b.url,
+              scanResult: 'dangerous',
+              threatType: b.reason ?? 'Blocked',
+              riskScore: 100, // Critical
+              scannedAt: b.blockedAt ?? DateTime.now(),
+              virusTotalFlags: 5,
+              heuristicHits: 3,
+              communityReports: 10,
+            ),
+          )
+          .toList();
     });
 
     ref.watch(scanHistoryProvider).whenData((scans) {
@@ -298,8 +329,12 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
         final query = _searchController.text.toLowerCase().trim();
         _filteredHistoryScans = scans.where((scan) {
           final urlMatch = scan.scannedUrl.toLowerCase().contains(query);
-          final resultMatch = (scan.scanResult ?? '').toLowerCase().contains(query);
-          final threatMatch = (scan.threatType ?? '').toLowerCase().contains(query);
+          final resultMatch = (scan.scanResult ?? '').toLowerCase().contains(
+            query,
+          );
+          final threatMatch = (scan.threatType ?? '').toLowerCase().contains(
+            query,
+          );
           return urlMatch || resultMatch || threatMatch;
         }).toList();
       } else {
@@ -308,32 +343,51 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     });
 
     try {
-      debugPrint('AlertsScreen build called: isLoading=$_isLoading, scansLength=${_scans.length}, errorMessage=$_errorMessage');
       final Widget mainContent;
       if (_isLoading) {
         mainContent = _buildLoadingState();
       } else if (_errorMessage != null) {
         mainContent = _buildErrorState();
       } else {
-        mainContent = _selectedTab == 0 ? _buildScanList() : _buildHistoryTabContent();
+        mainContent = selectedTab == 0
+            ? _buildScanList()
+            : _buildHistoryTabContent();
       }
 
       return Scaffold(
         backgroundColor: _bgColor,
-        body: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildHeader(),
-            _buildTabBar(),
-            if (_selectedTab == 0 && !_isLoading && _errorMessage == null) _buildFilterChips(),
-            Expanded(
-              child: mainContent,
-            ),
-          ],
+        body: SafeArea(
+          bottom: false,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final contentWidth = constraints.maxWidth > 760
+                  ? 760.0
+                  : constraints.maxWidth;
+              return Align(
+                alignment: Alignment.topCenter,
+                child: SizedBox(
+                  width: contentWidth,
+                  height: constraints.maxHeight,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildHeader(),
+                      _buildTabBar(selectedTab),
+                      if (selectedTab == 0 &&
+                          !_isLoading &&
+                          _errorMessage == null)
+                        _buildFilterChips(),
+                      Expanded(child: mainContent),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
         ),
       );
     } catch (e, stack) {
-      debugPrint('AlertsScreen build error: $e\n$stack');
+      if (kDebugMode) debugPrint('AlertsScreen build error: $e\n$stack');
       return const Scaffold(
         body: Center(
           child: Padding(
@@ -341,7 +395,11 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.error_outline_rounded, color: Color(0xFFEF4444), size: 48),
+                Icon(
+                  Icons.error_outline_rounded,
+                  color: Color(0xFFEF4444),
+                  size: 48,
+                ),
                 SizedBox(height: 16),
                 Text(
                   'Screen Load Error',
@@ -355,10 +413,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                 Text(
                   "We're having trouble displaying this screen. Please try again in a few moments.",
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 14,
-                  ),
+                  style: TextStyle(color: Colors.white70, fontSize: 14),
                 ),
               ],
             ),
@@ -385,15 +440,9 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                     _amber.withValues(alpha: 0.05),
                   ],
                 ),
-                border: Border.all(
-                  color: _red.withValues(alpha: 0.3),
-                ),
+                border: Border.all(color: _red.withValues(alpha: 0.3)),
               ),
-              child: Icon(
-                Icons.error_outline_rounded,
-                size: 48,
-                color: _red,
-              ),
+              child: Icon(Icons.error_outline_rounded, size: 48, color: _red),
             ),
             const SizedBox(height: 24),
             Text(
@@ -417,7 +466,11 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
             const SizedBox(height: 28),
             ElevatedButton.icon(
               onPressed: _loadScans,
-              icon: const Icon(Icons.refresh_rounded, color: Colors.white, size: 20),
+              icon: const Icon(
+                Icons.refresh_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
               label: const Text(
                 'Try Again',
                 style: TextStyle(
@@ -432,7 +485,10 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 14,
+                ),
               ),
             ),
           ],
@@ -442,12 +498,18 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   }
 
   Widget _buildHeader() {
+    final isCompact = MediaQuery.sizeOf(context).width < 380;
     return Padding(
-      padding: EdgeInsets.fromLTRB(20, 60, 20, 8),
+      padding: EdgeInsets.fromLTRB(
+        isCompact ? 16 : 20,
+        isCompact ? 12 : 20,
+        isCompact ? 16 : 20,
+        8,
+      ),
       child: Row(
         children: [
           Container(
-            padding: EdgeInsets.all(12),
+            padding: EdgeInsets.all(isCompact ? 10 : 12),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
@@ -461,10 +523,10 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
             child: Icon(
               Icons.shield_rounded,
               color: _red,
-              size: 26,
+              size: isCompact ? 23 : 26,
             ),
           ),
-          SizedBox(width: 16),
+          SizedBox(width: isCompact ? 12 : 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -473,14 +535,16 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                   'Threat Alerts',
                   style: TextStyle(
                     color: _textPrimary,
-                    fontSize: 24,
+                    fontSize: isCompact ? 21 : 24,
                     fontWeight: FontWeight.w800,
                     letterSpacing: -0.5,
                   ),
                 ),
                 SizedBox(height: 2),
                 Text(
-                  'All scanned URLs and their threat levels',
+                  'Unsafe scans that need your attention',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: _textPrimary.withValues(alpha: 0.45),
                     fontSize: 13,
@@ -496,9 +560,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
             decoration: BoxDecoration(
               color: _surfaceColor.withValues(alpha: 0.6),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: _primaryGreen.withValues(alpha: 0.3),
-              ),
+              border: Border.all(color: _primaryGreen.withValues(alpha: 0.3)),
             ),
             child: Text(
               '${_filteredScans.length}',
@@ -524,7 +586,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
       'Low': 0,
     };
     for (final s in _scans) {
-      final sev = _severityFromScore(s.riskScore);
+      final sev = _severityForScan(s);
       counts[sev] = (counts[sev] ?? 0) + 1;
     }
 
@@ -538,8 +600,9 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
         itemBuilder: (context, index) {
           final filter = _severityFilters[index];
           final isSelected = _selectedSeverity == filter;
-          final chipColor =
-              filter == 'All' ? _primaryGreen : _severityColor(filter);
+          final chipColor = filter == 'All'
+              ? _primaryGreen
+              : _severityColor(filter);
           final count = counts[filter] ?? 0;
 
           return GestureDetector(
@@ -587,14 +650,14 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                     style: TextStyle(
                       color: isSelected ? chipColor : _textSecondary,
                       fontSize: 13,
-                      fontWeight:
-                          isSelected ? FontWeight.w700 : FontWeight.w500,
+                      fontWeight: isSelected
+                          ? FontWeight.w700
+                          : FontWeight.w500,
                     ),
                   ),
                   SizedBox(width: 6),
                   Container(
-                    padding:
-                        EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
                       color: isSelected
                           ? chipColor.withValues(alpha: 0.25)
@@ -664,9 +727,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-              border: Border.all(
-                color: _primaryGreen.withValues(alpha: 0.2),
-              ),
+              border: Border.all(color: _primaryGreen.withValues(alpha: 0.2)),
             ),
             child: Icon(
               Icons.verified_user_rounded,
@@ -774,7 +835,11 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
               _buildSectionEmptyCard('No global threats matching filter.')
             else
               ...List.generate(globalBlocked.length, (index) {
-                return _buildScanCard(globalBlocked[index], index, isGlobal: true);
+                return _buildScanCard(
+                  globalBlocked[index],
+                  index,
+                  isGlobal: true,
+                );
               }),
             const SizedBox(height: 12),
           ],
@@ -787,14 +852,18 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
             _buildSectionEmptyCard('No dangerous scans matching filter.')
           else
             ...List.generate(myDangerousScans.length, (index) {
-              return _buildScanCard(myDangerousScans[index], index, isGlobal: false);
+              return _buildScanCard(
+                myDangerousScans[index],
+                index,
+                isGlobal: false,
+              );
             }),
         ],
       ),
     );
   }
 
-  Widget _buildTabBar() {
+  Widget _buildTabBar(int selectedTab) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       child: Container(
@@ -803,19 +872,17 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
         decoration: BoxDecoration(
           color: _cardColor,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: _surfaceColor.withValues(alpha: 0.8),
-          ),
+          border: Border.all(color: _surfaceColor.withValues(alpha: 0.8)),
         ),
         child: Row(
           children: [
             Expanded(
               child: GestureDetector(
-                onTap: () => setState(() => _selectedTab = 0),
+                onTap: () => ref.read(alertsTabProvider.notifier).state = 0,
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   decoration: BoxDecoration(
-                    color: _selectedTab == 0
+                    color: selectedTab == 0
                         ? _primaryGreen.withValues(alpha: 0.15)
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(8),
@@ -826,16 +893,22 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                     children: [
                       Icon(
                         Icons.shield_rounded,
-                        color: _selectedTab == 0 ? _primaryGreen : _textSecondary,
+                        color: selectedTab == 0
+                            ? _primaryGreen
+                            : _textSecondary,
                         size: 16,
                       ),
                       const SizedBox(width: 8),
                       Text(
                         'Threat Alerts',
                         style: TextStyle(
-                          color: _selectedTab == 0 ? _primaryGreen : _textSecondary,
+                          color: selectedTab == 0
+                              ? _primaryGreen
+                              : _textSecondary,
                           fontSize: 13,
-                          fontWeight: _selectedTab == 0 ? FontWeight.w700 : FontWeight.w500,
+                          fontWeight: selectedTab == 0
+                              ? FontWeight.w700
+                              : FontWeight.w500,
                         ),
                       ),
                     ],
@@ -845,11 +918,11 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
             ),
             Expanded(
               child: GestureDetector(
-                onTap: () => setState(() => _selectedTab = 1),
+                onTap: () => ref.read(alertsTabProvider.notifier).state = 1,
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   decoration: BoxDecoration(
-                    color: _selectedTab == 1
+                    color: selectedTab == 1
                         ? _primaryGreen.withValues(alpha: 0.15)
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(8),
@@ -860,16 +933,22 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                     children: [
                       Icon(
                         Icons.history_rounded,
-                        color: _selectedTab == 1 ? _primaryGreen : _textSecondary,
+                        color: selectedTab == 1
+                            ? _primaryGreen
+                            : _textSecondary,
                         size: 16,
                       ),
                       const SizedBox(width: 8),
                       Text(
                         'Scan History',
                         style: TextStyle(
-                          color: _selectedTab == 1 ? _primaryGreen : _textSecondary,
+                          color: selectedTab == 1
+                              ? _primaryGreen
+                              : _textSecondary,
                           fontSize: 13,
-                          fontWeight: _selectedTab == 1 ? FontWeight.w700 : FontWeight.w500,
+                          fontWeight: selectedTab == 1
+                              ? FontWeight.w700
+                              : FontWeight.w500,
                         ),
                       ),
                     ],
@@ -900,7 +979,11 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
               itemCount: _filteredHistoryScans.length,
               itemBuilder: (context, index) {
-                return _buildScanCard(_filteredHistoryScans[index], index, isGlobal: false);
+                return _buildScanCard(
+                  _filteredHistoryScans[index],
+                  index,
+                  isGlobal: false,
+                );
               },
             ),
           ),
@@ -954,7 +1037,10 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                 : null,
             filled: true,
             fillColor: _cardColor,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
+            ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
               borderSide: BorderSide(
@@ -969,10 +1055,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide(
-                color: _primaryGreen,
-                width: 1.5,
-              ),
+              borderSide: BorderSide(color: _primaryGreen, width: 1.5),
             ),
           ),
         ),
@@ -1017,7 +1100,9 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                     ),
                     const SizedBox(height: 24),
                     Text(
-                      _allScans.isEmpty ? 'No scan history' : 'No results found',
+                      _allScans.isEmpty
+                          ? 'No scan history'
+                          : 'No results found',
                       style: TextStyle(
                         color: _textSecondary,
                         fontSize: 18,
@@ -1047,9 +1132,24 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   }
 
   Widget _buildScanCard(UrlScanModel scan, int index, {bool isGlobal = false}) {
-    final severity = _severityFromScore(scan.riskScore);
+    final severity = _severityForScan(scan);
     final sevColor = isGlobal ? _primaryGreen : _severityColor(severity);
     final score = scan.riskScore ?? 0;
+    final isSuspicious = scan.scanResult?.toLowerCase() == 'suspicious';
+    final resultColor = isGlobal
+        ? _red
+        : scan.isSafe
+        ? _primaryGreen
+        : isSuspicious
+        ? _amber
+        : _red;
+    final resultLabel = isGlobal
+        ? 'BLOCKED'
+        : scan.isSafe
+        ? 'SAFE'
+        : isSuspicious
+        ? 'SUSPICIOUS'
+        : 'DANGER';
 
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.0, end: 1.0),
@@ -1089,11 +1189,15 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
             filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
             child: Container(
               decoration: BoxDecoration(
-                color: _cardColor.withValues(alpha: 0.8), // Glassmorphic translucent bg
+                color: _cardColor.withValues(
+                  alpha: 0.8,
+                ), // Glassmorphic translucent bg
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: isGlobal 
-                      ? _primaryGreen.withValues(alpha: 0.25) // Forest Green border
+                  color: isGlobal
+                      ? _primaryGreen.withValues(
+                          alpha: 0.25,
+                        ) // Forest Green border
                       : sevColor.withValues(alpha: 0.15),
                   width: 1.2,
                 ),
@@ -1129,16 +1233,23 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                                     vertical: 3,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: (isGlobal ? _primaryGreen : sevColor).withValues(alpha: 0.15),
+                                    color: (isGlobal ? _primaryGreen : sevColor)
+                                        .withValues(alpha: 0.15),
                                     borderRadius: BorderRadius.circular(6),
                                     border: Border.all(
-                                      color: (isGlobal ? _primaryGreen : sevColor).withValues(alpha: 0.4),
+                                      color:
+                                          (isGlobal ? _primaryGreen : sevColor)
+                                              .withValues(alpha: 0.4),
                                     ),
                                   ),
                                   child: Text(
-                                    isGlobal ? 'GLOBAL THREAT' : severity.toUpperCase(),
+                                    isGlobal
+                                        ? 'GLOBAL THREAT'
+                                        : severity.toUpperCase(),
                                     style: TextStyle(
-                                      color: isGlobal ? _primaryGreen : sevColor,
+                                      color: isGlobal
+                                          ? _primaryGreen
+                                          : sevColor,
                                       fontSize: 9,
                                       fontWeight: FontWeight.w800,
                                       letterSpacing: 0.8,
@@ -1153,17 +1264,13 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                                     vertical: 3,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: isGlobal
-                                        ? _red.withValues(alpha: 0.12)
-                                        : (scan.isSafe
-                                            ? _primaryGreen.withValues(alpha: 0.12)
-                                            : _red.withValues(alpha: 0.12)),
+                                    color: resultColor.withValues(alpha: 0.12),
                                     borderRadius: BorderRadius.circular(6),
                                   ),
                                   child: Text(
-                                    isGlobal ? 'BLOCKED' : (scan.isSafe ? 'SAFE' : 'DANGER'),
+                                    resultLabel,
                                     style: TextStyle(
-                                      color: isGlobal ? _red : (scan.isSafe ? _primaryGreen : _red),
+                                      color: resultColor,
                                       fontSize: 9,
                                       fontWeight: FontWeight.w800,
                                       letterSpacing: 0.5,
@@ -1185,6 +1292,16 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                             const SizedBox(height: 10),
 
                             // ── Row 2: URL with custom icons ──
+                            Text(
+                              _alertTitle(scan, isGlobal: isGlobal),
+                              style: TextStyle(
+                                color: _textPrimary,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: -0.1,
+                              ),
+                            ),
+                            const SizedBox(height: 7),
                             Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -1192,8 +1309,8 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                                   isGlobal
                                       ? Icons.block_flipped
                                       : (scan.isSafe
-                                          ? Icons.check_circle_outline_rounded
-                                          : Icons.warning_amber_rounded),
+                                            ? Icons.check_circle_outline_rounded
+                                            : Icons.warning_amber_rounded),
                                   color: isGlobal
                                       ? _red
                                       : (scan.isSafe ? _primaryGreen : _amber),
@@ -1250,7 +1367,9 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                                 // Risk score pill
                                 Container(
                                   padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 4),
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: sevColor.withValues(alpha: 0.1),
                                     borderRadius: BorderRadius.circular(6),
@@ -1271,10 +1390,12 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                                     borderRadius: BorderRadius.circular(3),
                                     child: LinearProgressIndicator(
                                       value: score / 100,
-                                      backgroundColor:
-                                          _surfaceColor.withValues(alpha: 0.25),
-                                      valueColor:
-                                          AlwaysStoppedAnimation<Color>(sevColor),
+                                      backgroundColor: _surfaceColor.withValues(
+                                        alpha: 0.25,
+                                      ),
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        sevColor,
+                                      ),
                                       minHeight: 4,
                                     ),
                                   ),
@@ -1282,9 +1403,11 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                                 // VT flags
                                 if (scan.virusTotalFlags > 0) ...[
                                   const SizedBox(width: 10),
-                                  Icon(Icons.flag_rounded,
-                                      size: 11,
-                                      color: _red.withValues(alpha: 0.6)),
+                                  Icon(
+                                    Icons.flag_rounded,
+                                    size: 11,
+                                    color: _red.withValues(alpha: 0.6),
+                                  ),
                                   const SizedBox(width: 2),
                                   Text(
                                     '${scan.virusTotalFlags}',
@@ -1298,9 +1421,11 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                                 // Heuristic hits
                                 if (scan.heuristicHits > 0) ...[
                                   const SizedBox(width: 8),
-                                  Icon(Icons.psychology_rounded,
-                                      size: 11,
-                                      color: _amber.withValues(alpha: 0.6)),
+                                  Icon(
+                                    Icons.psychology_rounded,
+                                    size: 11,
+                                    color: _amber.withValues(alpha: 0.6),
+                                  ),
                                   const SizedBox(width: 2),
                                   Text(
                                     '${scan.heuristicHits}',

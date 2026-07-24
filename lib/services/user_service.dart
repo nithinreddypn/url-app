@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart';
 
@@ -15,10 +16,14 @@ class UserService {
       if (usersJson != null) {
         final decoded = jsonDecode(usersJson) as List;
         _localUsers.clear();
-        _localUsers.addAll(decoded.map((json) => UserModel.fromJson(json as Map<String, dynamic>)));
+        _localUsers.addAll(
+          decoded.map(
+            (json) => UserModel.fromJson(json as Map<String, dynamic>),
+          ),
+        );
       }
     } catch (e) {
-      print('Error initializing local users: $e');
+      if (kDebugMode) debugPrint('Local user initialization failed: $e');
     }
     _initialized = true;
   }
@@ -29,7 +34,7 @@ class UserService {
       final usersJson = jsonEncode(_localUsers.map((u) => u.toJson()).toList());
       await prefs.setString('local_users', usersJson);
     } catch (e) {
-      print('Error saving local users: $e');
+      if (kDebugMode) debugPrint('Local user save failed: $e');
     }
   }
 
@@ -47,7 +52,9 @@ class UserService {
   Future<UserModel?> getUserByEmail(String email) async {
     await _ensureInitialized();
     try {
-      return _localUsers.firstWhere((u) => u.email.toLowerCase() == email.toLowerCase());
+      return _localUsers.firstWhere(
+        (u) => u.email.toLowerCase() == email.toLowerCase(),
+      );
     } catch (_) {
       return null;
     }
@@ -75,7 +82,10 @@ class UserService {
   }
 
   /// Update user profile fields.
-  Future<UserModel> updateUser(String userId, Map<String, dynamic> updates) async {
+  Future<UserModel> updateUser(
+    String userId,
+    Map<String, dynamic> updates,
+  ) async {
     await _ensureInitialized();
     final userIdx = _localUsers.indexWhere((u) => u.userId == userId);
     if (userIdx == -1) {
@@ -94,9 +104,10 @@ class UserService {
       username: updates['username'] as String? ?? user.username,
       email: updates['email'] as String? ?? user.email,
       isPremium: updates['is_premium'] as bool? ?? user.isPremium,
-      lifetimeScanCount: updates['lifetime_scan_count'] as int? ?? user.lifetimeScanCount,
-      blockedList: updates['blocked_list'] != null 
-          ? List<String>.from(updates['blocked_list'] as Iterable) 
+      lifetimeScanCount:
+          updates['lifetime_scan_count'] as int? ?? user.lifetimeScanCount,
+      blockedList: updates['blocked_list'] != null
+          ? List<String>.from(updates['blocked_list'] as Iterable)
           : user.blockedList,
       role: updates['role'] as String? ?? user.role,
       createdAt: user.createdAt,
@@ -107,7 +118,10 @@ class UserService {
   }
 
   /// Update the user's blocked list.
-  Future<UserModel> updateBlockedList(String userId, List<String> blockedList) async {
+  Future<UserModel> updateBlockedList(
+    String userId,
+    List<String> blockedList,
+  ) async {
     return await updateUser(userId, {'blocked_list': blockedList});
   }
 
