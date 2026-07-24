@@ -231,7 +231,8 @@ final class AuthController
                     'expires' => $expires
                 ]);
                 $signature = hash_hmac('sha256', $tokenData, env('GOOGLE_OAUTH_CLIENT_SECRET', 'url_defender_secret'));
-                $link = "http://localhost:8123/api/v1/auth/confirm-email?data=" . urlencode(base64_encode($tokenData)) . "&signature=" . urlencode($signature);
+                $baseUrl = rtrim((string) env('APP_URL', 'http://localhost:8123/api/v1'), '/');
+                $link = $baseUrl . "/auth/confirm-email?data=" . urlencode(base64_encode($tokenData)) . "&signature=" . urlencode($signature);
                 
                 try {
                     $subject = 'Confirm your URL Defender registration';
