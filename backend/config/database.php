@@ -36,7 +36,7 @@ final class Database
         'port' => '3306',
         'name' => 'u865173473_URL_Defender',
         'user' => 'u865173473_url_defender',
-        'password' => 'tXrd9Y!mYHyx8@1',
+        'password' => 'tXrd9Y!mYHyx8@7',
     ];
 
     // ---------------------------------------------------------------------
@@ -85,31 +85,16 @@ final class Database
 
     private static function isLocalRequest(): bool
     {
-        // The configured environment is authoritative. A physical phone reaches
-        // the development server through the computer's LAN address, so its
-        // Host header is not "localhost" even though the API is running locally.
-        $environment = strtolower(self::environmentValue('APP_ENV', 'development'));
-        if (in_array($environment, ['development', 'local', 'testing'], true)) {
-            return true;
-        }
-        if ($environment === 'production') {
-            return false;
-        }
-
         $rawHost = strtolower((string) ($_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? ''));
         $parsedHost = $rawHost === '' ? null : parse_url('http://' . $rawHost, PHP_URL_HOST);
         $host = trim(is_string($parsedHost) ? $parsedHost : $rawHost, '[]');
 
-        if (in_array($host, ['localhost', '127.0.0.1', '::1'], true)) {
-            return true;
-        }
-
         if ($host !== '') {
-            return false;
+            return in_array($host, ['localhost', '127.0.0.1', '::1'], true);
         }
 
-        // PHP's built-in server and local CLI tasks have no reliable HTTP host.
-        return PHP_SAPI === 'cli';
+        $environment = strtolower(self::environmentValue('APP_ENV', 'development'));
+        return in_array($environment, ['development', 'local', 'testing'], true);
     }
 
     // ---------------------------------------------------------------------
