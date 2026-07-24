@@ -264,7 +264,8 @@ final class AuthController
                         'expires' => $expires
                     ]);
                     $signature = hash_hmac('sha256', $tokenData, env('GOOGLE_OAUTH_CLIENT_SECRET', 'url_defender_secret'));
-                    $link = "http://localhost:8123/api/v1/auth/confirm-email?data=" . urlencode(base64_encode($tokenData)) . "&signature=" . urlencode($signature);
+                    $baseUrl = rtrim((string) env('APP_URL', 'http://localhost:8123/api/v1'), '/');
+                    $link = $baseUrl . "/auth/confirm-email?data=" . urlencode(base64_encode($tokenData)) . "&signature=" . urlencode($signature);
                     
                     $this->db->commit();
                     try {
@@ -592,6 +593,8 @@ HTML;
     {
         $success = false;
         $message = '';
+        $origins = explode(',', (string) env('APP_ALLOWED_ORIGINS', ''));
+        $webUrl = !empty($origins[0]) ? trim($origins[0]) : 'http://localhost:8080';
         
         try {
             $dataBase64 = $input['data'] ?? null;
@@ -722,7 +725,7 @@ HTML;
     <div class="icon">' . $icon . '</div>
     <h1>' . $title . '</h1>
     <p>' . htmlspecialchars($message) . '</p>
-    <a href="http://localhost:8080" class="btn">Go to URL Defender</a>
+    <a href="' . htmlspecialchars($webUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '" class="btn">Go to URL Defender</a>
   </div>
 </body>
 </html>';
