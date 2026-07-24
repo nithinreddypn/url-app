@@ -32,11 +32,11 @@ final class Database
     // This file lives outside backend/public and must not be web-accessible.
     // ---------------------------------------------------------------------
     private const PRODUCTION_CONFIGURATION = [
-        'host' => 'HOSTINGER_DB_HOST',
+        'host' => 'localhost',
         'port' => '3306',
-        'name' => 'HOSTINGER_DB_NAME',
-        'user' => 'HOSTINGER_DB_USER',
-        'password' => 'HOSTINGER_DB_PASSWORD',
+        'name' => 'u865173473_URL_Defender',
+        'user' => 'u865173473_url_defender',
+        'password' => 'tXrd9Y!mYHyx8@1',
     ];
 
     // ---------------------------------------------------------------------
