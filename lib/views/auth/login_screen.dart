@@ -7,6 +7,7 @@ import '../../services/alert_service.dart';
 import '../../services/login_error_handler.dart';
 import '../../providers/app_providers.dart';
 import 'auth_widgets.dart';
+import '../../services/api_client.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -426,6 +427,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   text: "New to URL Defender? ",
                   actionText: "Create Account",
                   onTap: () => context.go('/signup'),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Center(
+                child: Text(
+                  'API: ${ApiClient.baseUrl}',
+                  style: TextStyle(color: textSec.withOpacity(0.5), fontSize: 11),
                 ),
               ),
             ],
