@@ -32,6 +32,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 $method = $_SERVER['REQUEST_METHOD'];
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/';
+
+// Dynamically strip the subdirectory containing index.php (e.g. /backend/public)
+$scriptDir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
+$scriptDir = rtrim($scriptDir, '/');
+if ($scriptDir !== '') {
+    $path = preg_replace('#^' . preg_quote($scriptDir, '#') . '#', '', $path) ?: '/';
+}
+
 $path = preg_replace('#^/api/v1#', '', $path) ?: '/';
 
 // Serve managed avatar files through the front controller so browser clients
