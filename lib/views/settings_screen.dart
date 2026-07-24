@@ -11,7 +11,7 @@ import 'package:image/image.dart' as image_tools;
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:js' as js;
+import 'settings_js_stub.dart' if (dart.library.js) 'dart:js' as js;
 import '../services/auth_service.dart';
 import '../services/blocked_url_service.dart';
 import '../services/url_scan_service.dart';
