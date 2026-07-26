@@ -13,7 +13,7 @@ class GoogleSignInService {
   static const webClientId = String.fromEnvironment(
     'GOOGLE_WEB_CLIENT_ID',
     defaultValue:
-        '729107585198-2djt2sm2nho5k52cvc0itom0m1nmrkpa.apps.googleusercontent.com',
+        '729107585198-sukhipd70b79ng9pdr8mmf2krhm3jgqf.apps.googleusercontent.com',
   );
 
   final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
