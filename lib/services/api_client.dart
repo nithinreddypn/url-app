@@ -68,8 +68,9 @@ class ApiClient {
   Future<Map<String, dynamic>> post(
     String path, {
     Map<String, dynamic>? body,
+    Map<String, String>? headers,
     bool authenticated = true,
-  }) => _request('POST', path, body: body, authenticated: authenticated);
+  }) => _request('POST', path, body: body, headers: headers, authenticated: authenticated);
 
   /// Uses a caller-owned client so an in-flight lookup can be cancelled by
   /// closing that client when the input changes.
@@ -158,17 +159,19 @@ class ApiClient {
     String method,
     String path, {
     Map<String, dynamic>? body,
+    Map<String, String>? headers,
     required bool authenticated,
     http.Client? client,
   }) async {
-    final headers = <String, String>{'Accept': 'application/json'};
-    if (body != null) headers['Content-Type'] = 'application/json';
+    final reqHeaders = <String, String>{'Accept': 'application/json'};
+    if (body != null) reqHeaders['Content-Type'] = 'application/json';
+    if (headers != null) reqHeaders.addAll(headers);
     if (authenticated) {
       final sessionToken = await token();
       if (sessionToken == null || sessionToken.isEmpty) {
         throw const ApiException(401, ApiFailureKind.unauthorized);
       }
-      headers['Authorization'] = 'Bearer $sessionToken';
+      reqHeaders['Authorization'] = 'Bearer $sessionToken';
       if (kDebugMode && sessionToken.startsWith('debug-test-session-')) {
         return _debugTestRequest(method, path, body);
       }
@@ -179,32 +182,32 @@ class ApiClient {
     try {
       response = await (switch (method) {
         'GET' =>
-          client?.get(uri, headers: headers) ?? http.get(uri, headers: headers),
+          client?.get(uri, headers: reqHeaders) ?? http.get(uri, headers: reqHeaders),
         'POST' =>
           client?.post(
                 uri,
-                headers: headers,
+                headers: reqHeaders,
                 body: body == null ? null : jsonEncode(body),
               ) ??
               http.post(
                 uri,
-                headers: headers,
+                headers: reqHeaders,
                 body: body == null ? null : jsonEncode(body),
               ),
         'PATCH' =>
           client?.patch(
                 uri,
-                headers: headers,
+                headers: reqHeaders,
                 body: body == null ? null : jsonEncode(body),
               ) ??
               http.patch(
                 uri,
-                headers: headers,
+                headers: reqHeaders,
                 body: body == null ? null : jsonEncode(body),
               ),
         'DELETE' =>
-          client?.delete(uri, headers: headers) ??
-              http.delete(uri, headers: headers),
+          client?.delete(uri, headers: reqHeaders) ??
+              http.delete(uri, headers: reqHeaders),
         _ => throw ArgumentError.value(method, 'method'),
       }).timeout(_requestTimeout);
     } on TimeoutException {
