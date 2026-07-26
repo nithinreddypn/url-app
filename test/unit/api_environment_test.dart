@@ -56,16 +56,16 @@ void main() {
       );
     });
 
-    test('Android release requires an explicit production endpoint', () {
+    test('Android release defaults to production endpoint', () {
       expect(
-        () => ApiEnvironment.resolve(
+        ApiEnvironment.resolve(
           configuredUrl: '',
           isWeb: false,
           platform: TargetPlatform.android,
           webOrigin: Uri(),
           isRelease: true,
         ),
-        throwsStateError,
+        'https://moccasin-chicken-542251.hostingersite.com/backend/public/api/v1',
       );
     });
   });

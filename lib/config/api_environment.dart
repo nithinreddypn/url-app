@@ -52,14 +52,16 @@ abstract final class ApiEnvironment {
 
     if (platform == TargetPlatform.android) {
       if (isRelease) {
-        throw StateError(
-          'API_BASE_URL must be supplied for an Android release build.',
-        );
+        return 'https://moccasin-chicken-542251.hostingersite.com/backend/public/api/v1';
       }
       // Android Studio's standard emulator maps this address to the host.
       // Physical-device development uses tool/run_android.ps1, which supplies
       // the computer's current LAN address through API_BASE_URL.
       return 'http://10.0.2.2:$_localApiPort$_apiPath';
+    }
+
+    if (isRelease) {
+      return 'https://moccasin-chicken-542251.hostingersite.com/backend/public/api/v1';
     }
 
     return 'http://127.0.0.1:$_localApiPort$_apiPath';
