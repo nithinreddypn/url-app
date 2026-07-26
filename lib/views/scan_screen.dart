@@ -558,7 +558,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 32),
+        const SizedBox(height: 12),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -1196,12 +1196,12 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
             ),
           ),
           SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 60, 20, 40),
+            padding: const EdgeInsets.fromLTRB(20, 48, 20, 32),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildTitleSection(),
-                const SizedBox(height: 28),
+                const SizedBox(height: 16),
                 _buildUrlInput(),
                 if (_showLookupProgress ||
                     _lookupResult != null ||
@@ -1211,7 +1211,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                 ],
                 const SizedBox(height: 20),
                 _buildScanButton(),
-                const SizedBox(height: 28),
+                const SizedBox(height: 16),
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 500),
                   switchInCurve: Curves.easeOutCubic,
@@ -1764,7 +1764,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
   Widget _buildIdleState() {
     return Container(
       key: ValueKey('idle'),
-      padding: EdgeInsets.symmetric(vertical: 40),
+      padding: EdgeInsets.symmetric(vertical: 16),
       child: Center(
         child: Column(
           children: [
