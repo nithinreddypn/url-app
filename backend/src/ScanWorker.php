@@ -438,7 +438,7 @@ final class ScanWorker
     {
         $attempts = (int) $job['attempts'] + 1;
         $message = substr($error, 0, 500);
-        if ($attempts >= 5) {
+        if ($attempts >= 7) {
             $this->db->beginTransaction();
             try {
                 $this->db->prepare("UPDATE scan_jobs SET status = 'failed', last_error = ? WHERE id = ?")->execute([$message, $job['id']]);
@@ -452,8 +452,17 @@ final class ScanWorker
             }
             return;
         }
-        $delayMinutes = min(30, 2 ** $attempts);
-        $this->db->prepare("UPDATE scan_jobs SET status = 'queued', available_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL {$delayMinutes} MINUTE), last_error = ? WHERE id = ?")
+        
+        $delaySeconds = match($attempts) {
+            2 => 2,
+            3 => 3,
+            4 => 5,
+            5 => 10,
+            6 => 20,
+            default => 30,
+        };
+        
+        $this->db->prepare("UPDATE scan_jobs SET status = 'queued', available_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL {$delaySeconds} SECOND), last_error = ? WHERE id = ?")
             ->execute([$message, $job['id']]);
     }
 }

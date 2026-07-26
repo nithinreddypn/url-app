@@ -638,6 +638,24 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
               );
             }
 
+            if (scans.length > 4) {
+              return SizedBox(
+                height: 336,
+                child: Scrollbar(
+                  thumbVisibility: true,
+                  child: ListView.separated(
+                    physics: const BouncingScrollPhysics(),
+                    itemCount: scans.length,
+                    separatorBuilder: (context, index) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      final scan = scans[index];
+                      return _buildRecentScanCard(scan);
+                    },
+                  ),
+                ),
+              );
+            }
+
             return ListView.separated(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -678,6 +696,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
     final isDangerous = resultStr == 'dangerous';
     final isSuspicious = resultStr == 'suspicious';
     final isPending = resultStr == 'pending';
+    final isError = resultStr == 'error';
 
     Color statusColor = _primaryGreen;
     IconData statusIcon = Icons.shield_rounded;
@@ -695,6 +714,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
       statusColor = Colors.grey;
       statusIcon = Icons.hourglass_empty_rounded;
       statusText = 'Pending';
+    } else if (isError) {
+      statusColor = Colors.grey;
+      statusIcon = Icons.error_outline_rounded;
+      statusText = 'Error';
     }
 
     // Extract domain name for a cleaner appearance
@@ -734,12 +757,23 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
           children: [
             // Status Icon with glowing circle backing
             Container(
-              padding: const EdgeInsets.all(10),
+              padding: isPending ? const EdgeInsets.all(11) : const EdgeInsets.all(10),
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: statusColor.withValues(alpha: 0.08),
               ),
-              child: Icon(statusIcon, color: statusColor, size: 20),
+              child: isPending
+                  ? SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(statusColor),
+                      ),
+                    )
+                  : Icon(statusIcon, color: statusColor, size: 20),
             ),
             const SizedBox(width: 14),
             // URL / Domain info
@@ -1241,6 +1275,30 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                       : _buildIdleState(),
                 ),
                 _buildRecentActivitySection(),
+                const SizedBox(height: 32),
+                Center(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.verified_user_rounded,
+                        color: _textMuted.withValues(alpha: 0.45),
+                        size: 14,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Secure 256-bit SSL Scan · History is private',
+                        style: TextStyle(
+                          color: _textMuted.withValues(alpha: 0.45),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
               ],
             ),
           ),

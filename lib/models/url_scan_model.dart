@@ -63,15 +63,13 @@ class UrlScanModel {
     };
   }
 
-  /// Whether this scan result indicates the URL is safe.
-  /// Whether this scan result indicates the URL is safe.
-  /// A URL is safe if the verdict is 'safe', or if the risk score is low
-  /// and there are no VirusTotal flags.
   bool get isSafe {
     final verdict = scanResult?.toLowerCase() ?? '';
     if (verdict == 'safe') return true;
-    if (verdict == 'dangerous') return false;
-    // For pending/unknown results, use risk score and flags as heuristic
+    if (verdict == 'dangerous' || verdict == 'suspicious' || verdict == 'pending' || verdict == 'error') {
+      return false;
+    }
+    // For other results, fallback to risk score and flags as heuristic
     if ((riskScore ?? 0) <= 20 && virusTotalFlags == 0) return true;
     return false;
   }

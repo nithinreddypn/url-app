@@ -178,6 +178,26 @@ final class ScanController
 
     public function detail(array $user, string $scanId): array
     {
+        // If the scan is still pending, run the worker inline to process it
+        $check = $this->db->prepare('SELECT verdict FROM scans WHERE id = ? AND user_id = ? LIMIT 1');
+        $check->execute([$scanId, $user['id']]);
+        $verdict = $check->fetchColumn();
+
+        if ($verdict === 'pending') {
+            $jobStmt = $this->db->prepare("SELECT id FROM scan_jobs WHERE scan_id = ? AND status = 'queued' LIMIT 1");
+            $jobStmt->execute([$scanId]);
+            $jobId = $jobStmt->fetchColumn();
+            if ($jobId) {
+                try {
+                    require_once __DIR__ . '/ScanWorker.php';
+                    $worker = new ScanWorker($this->db);
+                    $worker->processJobById($jobId, 'inline-detail-api');
+                } catch (Throwable $e) {
+                    // Ignore inline worker failures
+                }
+            }
+        }
+
         $scan = $this->db->prepare('SELECT id, url, hostname, verdict, risk_score, threat_category, duration_ms, scanned_at, created_at, normalized_url_hash FROM scans WHERE id = ? AND user_id = ? LIMIT 1');
         $scan->execute([$scanId, $user['id']]);
         $item = $scan->fetch();
