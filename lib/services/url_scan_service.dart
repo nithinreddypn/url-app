@@ -96,14 +96,14 @@ class UrlScanService {
     }
     final createdModel = _fromApi(Map<String, dynamic>.from(created), userId);
     if (createdModel.scanResult != 'pending') return createdModel;
-    for (var attempt = 0; attempt < 12; attempt++) {
+    for (var attempt = 0; attempt < 15; attempt++) {
       final detail = await _client.get('scans/$scanId');
       final scan = apiMap(detail['scan']);
       if (scan != null) {
         final model = _fromApi(scan, userId);
         if (model.scanResult != 'pending') return model;
       }
-      await Future<void>.delayed(const Duration(seconds: 2));
+      await Future<void>.delayed(const Duration(seconds: 1));
     }
     return createdModel;
   }

@@ -197,6 +197,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
           _lookupResult = null;
           _showLookupProgress = false;
           _lookupFailed = false;
+          _hasResult = false;
+          _scanResult = null;
         });
       }
     });
@@ -300,14 +302,16 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
         _scanLogTimer?.cancel();
         if (mounted) {
           setState(() {
-            _urlController.text = finalScan.scannedUrl;
             _scanResult = finalScan;
             _isScanning = false;
             _hasResult = true;
           });
-          _resultAnimController.value = 1.0;
-          _riskGaugeController.value = 1.0;
+          _resultAnimController.reset();
+          _resultAnimController.forward();
+          _riskGaugeController.reset();
+          _riskGaugeController.forward();
           _startAutoResetTimer();
+          _showSnackBar('URL already scanned — showing cached result');
         }
         return;
       }

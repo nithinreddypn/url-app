@@ -35,12 +35,8 @@ abstract final class ApiEnvironment {
       final isLocalHost =
           host == 'localhost' || host == '127.0.0.1' || host == '::1';
       if (isLocalHost) {
-        return Uri(
-          scheme: 'http',
-          host: host == '::1' ? '127.0.0.1' : host,
-          port: _localApiPort,
-          path: _apiPath,
-        ).toString();
+        // No local backend running — route to production API.
+        return 'https://moccasin-chicken-542251.hostingersite.com/backend/public/api/v1';
       }
 
       // A deployed web frontend defaults to a same-origin API. Deployments

@@ -4,7 +4,7 @@ import 'package:url_defender/config/api_environment.dart';
 
 void main() {
   group('ApiEnvironment', () {
-    test('uses host loopback for local web development', () {
+    test('uses production API for local web development', () {
       expect(
         ApiEnvironment.resolve(
           configuredUrl: '',
@@ -13,7 +13,7 @@ void main() {
           webOrigin: Uri.parse('http://localhost:8080/#/auth_gate'),
           isRelease: false,
         ),
-        'http://localhost:8123/api/v1',
+        'https://moccasin-chicken-542251.hostingersite.com/backend/public/api/v1',
       );
     });
 

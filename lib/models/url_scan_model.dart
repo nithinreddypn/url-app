@@ -64,7 +64,17 @@ class UrlScanModel {
   }
 
   /// Whether this scan result indicates the URL is safe.
-  bool get isSafe => scanResult?.toLowerCase() == 'safe';
+  /// Whether this scan result indicates the URL is safe.
+  /// A URL is safe if the verdict is 'safe', or if the risk score is low
+  /// and there are no VirusTotal flags.
+  bool get isSafe {
+    final verdict = scanResult?.toLowerCase() ?? '';
+    if (verdict == 'safe') return true;
+    if (verdict == 'dangerous') return false;
+    // For pending/unknown results, use risk score and flags as heuristic
+    if ((riskScore ?? 0) <= 20 && virusTotalFlags == 0) return true;
+    return false;
+  }
 
   /// Whether this scan result indicates the URL is dangerous.
   bool get isDangerous => scanResult?.toLowerCase() == 'dangerous';
