@@ -1539,7 +1539,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with SingleTick
   // ── HEADER ──
   Widget _buildHeader() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
       child: Row(
         children: [
           Icon(Icons.settings_outlined, color: _primaryGreen, size: 28),
@@ -1662,7 +1662,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with SingleTick
   // ── HORIZONTAL TABBAR (Mobile & Tablet Unified) ──
   Widget _buildTopTabBar() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
       child: Material(
         color: Colors.transparent,
         child: TabBar(
@@ -1698,13 +1698,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with SingleTick
       child: SingleChildScrollView(
         controller: _mainScrollController,
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 96),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 72),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // Floating profile overview widget
             _buildProfileSection(user),
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
             _buildActivePanel(),
           ],
         ),
@@ -2046,6 +2046,40 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with SingleTick
   }
 
   // ── 4. SECURITY PANEL ──
+  Widget _buildPlaceholderLine(IconData icon, String title, String subtitle) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: _textSecondary.withValues(alpha: 0.5), size: 20),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  color: _textPrimary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  color: _textSecondary,
+                  fontSize: 11,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── 4. SECURITY PANEL ──
   Widget _buildSecurityPanel() {
     final user = ref.watch(userProvider);
     final blockedUrlsAsync = ref.watch(blockedUrlsProvider);
@@ -2280,6 +2314,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with SingleTick
                 );
               },
             ),
+          const Divider(height: 32),
+          _buildPlaceholderLine(Icons.verified_user_rounded, 'Device Security', 'No additional security events available. Your account is currently protected.'),
+          const SizedBox(height: 16),
+          _buildPlaceholderLine(Icons.history_toggle_off_rounded, 'Login Activity', 'Your recent authentication events are secure.'),
+          const SizedBox(height: 16),
+          _buildPlaceholderLine(Icons.security_update_good_rounded, 'Account Protection', 'Real-time shields are active.'),
         ],
       ),
     );
@@ -2384,60 +2424,78 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with SingleTick
           ),
           const SizedBox(height: 24),
           // Admin Queue Card
-          Container(
-            margin: const EdgeInsets.only(bottom: 20),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              border: Border.all(color: _primaryGreen.withOpacity(0.3)),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Admin Threat Center', style: TextStyle(color: _primaryGreen, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 4),
-                      Text('Review community submissions and moderate threats.', style: TextStyle(color: _textMuted, fontSize: 11)),
-                    ],
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 450),
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                border: Border.all(color: _primaryGreen.withOpacity(0.3)),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('Admin Threat Center', style: TextStyle(color: _primaryGreen, fontWeight: FontWeight.bold, fontSize: 13)),
+                        const SizedBox(height: 2),
+                        Text('Moderate and review threats.', style: TextStyle(color: _textMuted, fontSize: 11)),
+                      ],
+                    ),
                   ),
-                ),
-                ElevatedButton.icon(
-                  onPressed: () => context.push('/admin/reports'),
-                  icon: const Icon(Icons.security, color: Colors.black, size: 16),
-                  label: const Text('Review Queue', style: TextStyle(color: Colors.black)),
-                  style: ElevatedButton.styleFrom(backgroundColor: _primaryGreen),
-                ),
-              ],
+                  const SizedBox(width: 12),
+                  ElevatedButton.icon(
+                    onPressed: () => context.push('/admin/reports'),
+                    icon: const Icon(Icons.security, color: Colors.black, size: 14),
+                    label: const Text('Review Queue', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.bold)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _primaryGreen,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           // Danger Zone / Sign Out Card
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              border: Border.all(color: _red.withOpacity(0.3)),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Danger Zone', style: TextStyle(color: _red, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 4),
-                      Text('Log out or manage destructive operations.', style: TextStyle(color: _textMuted, fontSize: 11)),
-                    ],
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 450),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                border: Border.all(color: _red.withOpacity(0.3)),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('Danger Zone', style: TextStyle(color: _red, fontWeight: FontWeight.bold, fontSize: 13)),
+                        const SizedBox(height: 2),
+                        Text('Log out of this device.', style: TextStyle(color: _textMuted, fontSize: 11)),
+                      ],
+                    ),
                   ),
-                ),
-                ElevatedButton.icon(
-                  onPressed: _signOut,
-                  icon: const Icon(Icons.logout_rounded, color: Colors.white, size: 16),
-                  label: const Text('Sign Out', style: TextStyle(color: Colors.white)),
-                  style: ElevatedButton.styleFrom(backgroundColor: _red),
-                ),
-              ],
+                  const SizedBox(width: 12),
+                  ElevatedButton.icon(
+                    onPressed: _signOut,
+                    icon: const Icon(Icons.logout_rounded, color: Colors.white, size: 14),
+                    label: const Text('Sign Out', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _red,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -2516,12 +2574,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with SingleTick
           onTap: () => context.push('/profile'),
           borderRadius: BorderRadius.circular(20),
           child: Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(16),
             child: Row(
               children: [
                 Container(
-                  width: 60,
-                  height: 60,
+                  width: 54,
+                  height: 54,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: LinearGradient(
@@ -2534,48 +2592,59 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with SingleTick
                     child: _avatarContent(user),
                   ),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
-                          Text(
-                            username,
-                            style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold, fontSize: 16),
+                          Flexible(
+                            child: Text(
+                              username,
+                              style: TextStyle(
+                                color: _textPrimary,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 6),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
                             decoration: BoxDecoration(
                               color: _primaryGreen.withOpacity(0.1),
                               borderRadius: BorderRadius.circular(4),
                               border: Border.all(color: _primaryGreen.withOpacity(0.3)),
                             ),
                             child: Row(
+                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.check_circle_rounded, color: _primaryGreen, size: 10),
+                                Icon(Icons.check_circle_rounded, color: _primaryGreen, size: 9),
                                 const SizedBox(width: 2),
                                 Text(
                                   'VERIFIED',
-                                  style: TextStyle(color: _primaryGreen, fontSize: 8, fontWeight: FontWeight.bold),
+                                  style: TextStyle(color: _primaryGreen, fontSize: 7, fontWeight: FontWeight.bold),
                                 ),
                               ],
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 3),
                       Text(
                         email,
-                        style: TextStyle(color: _textSecondary, fontSize: 12),
+                        style: TextStyle(color: _textSecondary, fontSize: 11),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 16),
-                Icon(Icons.chevron_right_rounded, color: _textSecondary, size: 24),
+                const SizedBox(width: 8),
+                Icon(Icons.chevron_right_rounded, color: _textSecondary, size: 20),
               ],
             ),
           ),
@@ -2601,11 +2670,11 @@ class PanelCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 24),
-      padding: const EdgeInsets.all(20),
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: context.cardBg,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: context.border),
       ),
       child: Column(

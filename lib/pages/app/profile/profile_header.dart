@@ -102,10 +102,9 @@ class ProfileHeader extends ConsumerWidget {
               ),
             ),
           
-          // Layout
           Flex(
             direction: isMobile ? Axis.vertical : Axis.horizontal,
-            crossAxisAlignment: isMobile ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               // Avatar with camera edit button
               Stack(
@@ -233,25 +232,33 @@ class ProfileHeader extends ConsumerWidget {
                           children: [
                             Icon(Icons.mail_outline_rounded, color: textSecondary, size: 14),
                             const SizedBox(width: 6),
-                            Text(
-                              user.email,
-                              style: TextStyle(color: textSecondary, fontSize: 13),
+                            Flexible(
+                              child: Text(
+                                user.email,
+                                style: TextStyle(color: textSecondary, fontSize: 13),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 4),
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(Icons.business_rounded, color: textSecondary, size: 14),
                             const SizedBox(width: 6),
-                            Text(
-                              'Enterprise URL Defender',
-                              style: TextStyle(color: textSecondary, fontSize: 13),
+                            Flexible(
+                              child: Text(
+                                'Enterprise URL Defender',
+                                style: TextStyle(color: textSecondary, fontSize: 13),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 8),
                         Text(
                           'MEMBER SINCE ${_formatMemberSince(user.createdAt)}',
                           style: TextStyle(

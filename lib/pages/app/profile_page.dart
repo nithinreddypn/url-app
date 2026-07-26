@@ -108,22 +108,16 @@ class ProfilePage extends ConsumerWidget {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (isTablet) ...[
-                      // 2-column layout for stats on tablet
-                      const StatsSection(),
-                      const SizedBox(height: 24),
-                    ] else ...[
-                      const StatsSection(),
-                      const SizedBox(height: 24),
-                    ],
+                    const StatsSection(),
+                    const SizedBox(height: 16),
                     const MonthlyActivityChart(),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
                     const ActivityLog(),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
                     AccountCard(user: user),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
                     const SubscriptionCard(),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
                     const ReporterReputationCard(),
                   ],
                 ),
