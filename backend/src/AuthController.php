@@ -205,6 +205,16 @@ final class AuthController
         $idToken = trim((string) ($input['id_token'] ?? ''));
         if ($idToken === 'WAF_BYPASS' || $idToken === '') {
             $idToken = trim((string) ($_SERVER['HTTP_X_GOOGLE_ID_TOKEN'] ?? ''));
+            if ($idToken === '') {
+                $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+                if ($authHeader === '' && function_exists('getallheaders')) {
+                    $allHeaders = getallheaders();
+                    $authHeader = $allHeaders['Authorization'] ?? $allHeaders['authorization'] ?? '';
+                }
+                if (stripos($authHeader, 'Google ') === 0) {
+                    $idToken = trim(substr($authHeader, 7));
+                }
+            }
         }
         $clientId = trim((string) env('GOOGLE_OAUTH_WEB_CLIENT_ID', ''));
         if ($idToken === '' || strlen($idToken) > 10000) {

@@ -105,7 +105,10 @@ class AuthService {
     final payload = await _client.post(
       'auth/google',
       authenticated: false,
-      headers: {'X-Google-Id-Token': idToken},
+      headers: {
+        'Authorization': 'Google $idToken',
+        'X-Google-Id-Token': idToken,
+      },
       body: {'id_token': 'WAF_BYPASS'},
     );
     if (payload['verification_pending'] == true) {
