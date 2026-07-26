@@ -234,80 +234,27 @@ final class AuthController
             $user = $existing->fetch();
 
             if (!$user) {
-                $this->db->commit();
-                
-                $expires = time() + 900; // 15 minutes
+                $userId = uuid();
                 $fullName = substr(trim($googleUser['name']), 0, 120);
-                $tokenData = json_encode([
-                    'email' => $email,
-                    'name' => $fullName === '' ? explode('@', $email)[0] : $fullName,
-                    'expires' => $expires
-                ]);
-                $signature = hash_hmac('sha256', $tokenData, env('GOOGLE_OAUTH_CLIENT_SECRET', 'url_defender_secret'));
-                $baseUrl = rtrim((string) env('APP_URL', 'http://localhost:8123/api/v1'), '/');
-                if (strpos($baseUrl, 'index.php') === false && strpos($baseUrl, 'localhost') === false && strpos($baseUrl, '127.0.0.1') === false) {
-                    $baseUrl .= '/index.php';
-                }
-                $link = $baseUrl . "/auth/confirm-email?data=" . urlencode(base64_encode($tokenData)) . "&signature=" . urlencode($signature);
+                $this->db->prepare('INSERT INTO users (id, email, password_hash, full_name, email_verified_at, is_active, last_login_at) VALUES (?, ?, ?, ?, UTC_TIMESTAMP(), 1, UTC_TIMESTAMP())')
+                    ->execute([
+                        $userId,
+                        $email,
+                        password_hash(bin2hex(random_bytes(32)), PASSWORD_ARGON2ID),
+                        $fullName === '' ? explode('@', $email)[0] : $fullName,
+                    ]);
+                $this->db->prepare("INSERT INTO user_roles (id, user_id, role) VALUES (?, ?, 'user')")
+                    ->execute([uuid(), $userId]);
+                $this->audit($userId, 'auth.google_registered', ['provider' => 'google']);
                 
-                try {
-                    $subject = 'Confirm your URL Defender registration';
-                    $text = "Please verify your email address by opening this link: " . $link;
-                    
-                    $extraHtml = '<div style="text-align: center; margin: 32px 0;">
-                        <a href="' . $link . '" style="background-color: #16A34A; color: white; padding: 14px 30px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 15px; display: inline-block; box-shadow: 0 4px 6px rgba(22,163,74,0.15);">' . 'Confirm Email Address' . '</a>
-                    </div>';
-                    
-                    $html = $this->mailer->getTemplate(
-                        'Confirm your Google registration',
-                        'Please click the button below to confirm your URL Defender registration and verify your account.',
-                        $extraHtml
-                    );
-                    $this->mailer->send($email, $subject, $text, $html);
-                } catch (Throwable $mailError) {
-                    error_log('Google welcome email failed: ' . $mailError->getMessage());
-                }
-                return [
-                    'verification_pending' => true,
-                    'message' => 'A verification link has been sent to your email. Please click it to verify your account.'
-                ];
+                // Fetch the newly created user to return it
+                $stmt = $this->db->prepare('SELECT * FROM users WHERE id = ?');
+                $stmt->execute([$userId]);
+                $user = $stmt->fetch();
             } else {
                 if ($user['email_verified_at'] === null) {
-                    $expires = time() + 900;
-                    $tokenData = json_encode([
-                        'email' => $email,
-                        'name' => $user['full_name'],
-                        'expires' => $expires
-                    ]);
-                    $signature = hash_hmac('sha256', $tokenData, env('GOOGLE_OAUTH_CLIENT_SECRET', 'url_defender_secret'));
-                    $baseUrl = rtrim((string) env('APP_URL', 'http://localhost:8123/api/v1'), '/');
-                    if (strpos($baseUrl, 'index.php') === false && strpos($baseUrl, 'localhost') === false && strpos($baseUrl, '127.0.0.1') === false) {
-                        $baseUrl .= '/index.php';
-                    }
-                    $link = $baseUrl . "/auth/confirm-email?data=" . urlencode(base64_encode($tokenData)) . "&signature=" . urlencode($signature);
-                    
-                    $this->db->commit();
-                    try {
-                        $subject = 'Confirm your URL Defender registration';
-                        $text = "Please verify your email address by opening this link: " . $link;
-                        
-                        $extraHtml = '<div style="text-align: center; margin: 32px 0;">
-                            <a href="' . $link . '" style="background-color: #16A34A; color: white; padding: 14px 30px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 15px; display: inline-block; box-shadow: 0 4px 6px rgba(22,163,74,0.15);">' . 'Confirm Email Address' . '</a>
-                        </div>';
-                        
-                        $html = $this->mailer->getTemplate(
-                            'Confirm your Google registration',
-                            'Please click the button below to confirm your URL Defender registration and verify your account.',
-                            $extraHtml
-                        );
-                        $this->mailer->send($email, $subject, $text, $html);
-                    } catch (Throwable $mailError) {
-                        error_log('Google welcome email failed: ' . $mailError->getMessage());
-                    }
-                    return [
-                        'verification_pending' => true,
-                        'message' => 'Your email is not verified yet. A verification link has been sent to your email.'
-                    ];
+                    $this->db->prepare('UPDATE users SET email_verified_at = UTC_TIMESTAMP(), is_active = 1 WHERE id = ?')->execute([$user['id']]);
+                    $user['email_verified_at'] = date('Y-m-d H:i:s');
                 }
                 
                 if (!(bool) $user['is_active']) {
