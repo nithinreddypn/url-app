@@ -80,6 +80,11 @@ function allowedOrigin(string $origin): bool
 
 function respond(int $status, array $payload): never
 {
+    @file_put_contents(
+        dirname(__DIR__) . '/storage/runtime/requests.log',
+        "Response Status: $status\nResponse: " . json_encode($payload) . "\n----------------------------------------\n\n",
+        FILE_APPEND
+    );
     http_response_code($status);
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
