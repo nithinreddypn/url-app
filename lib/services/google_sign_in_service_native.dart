@@ -31,12 +31,12 @@ class GoogleSignInService {
 
   Future<String> signInOnNativePlatform() async {
     await initialize();
-    final account = await _googleSignIn.signIn();
-    if (account == null) {
-      throw StateError('Google Sign-in was cancelled.');
+    if (!_googleSignIn.supportsAuthenticate()) {
+      throw UnsupportedError('Google sign-in is not available on this device.');
     }
-    final authentication = await account.authentication;
-    final idToken = authentication.idToken;
+
+    final account = await _googleSignIn.authenticate();
+    final idToken = account.authentication.idToken;
     if (idToken == null || idToken.isEmpty) {
       throw StateError('Google did not return an identity token.');
     }
