@@ -41,6 +41,7 @@ if ($scriptDir !== '') {
 }
 
 $path = preg_replace('#^/api/v1#', '', $path) ?: '/';
+$path = preg_replace('#^/index\.php#', '', $path) ?: '/';
 
 // Serve managed avatar files through the front controller so browser clients
 // receive the same validated CORS headers as JSON API responses.
