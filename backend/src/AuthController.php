@@ -232,6 +232,9 @@ final class AuthController
                 ]);
                 $signature = hash_hmac('sha256', $tokenData, env('GOOGLE_OAUTH_CLIENT_SECRET', 'url_defender_secret'));
                 $baseUrl = rtrim((string) env('APP_URL', 'http://localhost:8123/api/v1'), '/');
+                if (strpos($baseUrl, 'index.php') === false && strpos($baseUrl, 'localhost') === false && strpos($baseUrl, '127.0.0.1') === false) {
+                    $baseUrl .= '/index.php';
+                }
                 $link = $baseUrl . "/auth/confirm-email?data=" . urlencode(base64_encode($tokenData)) . "&signature=" . urlencode($signature);
                 
                 try {
@@ -265,6 +268,9 @@ final class AuthController
                     ]);
                     $signature = hash_hmac('sha256', $tokenData, env('GOOGLE_OAUTH_CLIENT_SECRET', 'url_defender_secret'));
                     $baseUrl = rtrim((string) env('APP_URL', 'http://localhost:8123/api/v1'), '/');
+                    if (strpos($baseUrl, 'index.php') === false && strpos($baseUrl, 'localhost') === false && strpos($baseUrl, '127.0.0.1') === false) {
+                        $baseUrl .= '/index.php';
+                    }
                     $link = $baseUrl . "/auth/confirm-email?data=" . urlencode(base64_encode($tokenData)) . "&signature=" . urlencode($signature);
                     
                     $this->db->commit();
