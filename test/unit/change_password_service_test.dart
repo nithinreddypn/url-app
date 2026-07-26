@@ -12,6 +12,7 @@ class _RecordingApiClient extends ApiClient {
     String path, {
     Map<String, dynamic>? body,
     bool authenticated = true,
+    Map<String, String>? headers,
   }) async {
     this.path = path;
     this.body = body;

@@ -51,6 +51,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
 
   Timer? _scanLogTimer;
   int _currentLogIndex = 0;
+  Timer? _autoResetTimer;
 
   // Typing animation fields for hint text
   Timer? _typingTimer;
@@ -101,14 +102,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
   }
 
   final List<String> _scanLogs = [
-    'Connecting to VirusTotal secure gateways...',
-    'Analyzing URL domain reputation...',
-    'Checking Google Safe Browsing blacklist...',
-    'Querying Kaspersky malware databases...',
-    'Scanning DNS and SSL certificates...',
-    'Parsing Heuristic analysis engines...',
-    'Compiling security community flags...',
-    'Finalizing threat score calculation...',
+    'Analyzing URL...',
+    'Checking Community Intelligence...',
+    'Retrieving Scan Result...',
+    'Almost Finished...',
   ];
 
   // Animation controllers
@@ -180,6 +177,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
     _scanLogTimer?.cancel();
     _lookupDebounce?.cancel();
     _lookupProgressDelay?.cancel();
+    _autoResetTimer?.cancel();
     _scanService.dispose();
     _urlController.dispose();
     _resultAnimController.dispose();
@@ -190,7 +188,22 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
     super.dispose();
   }
 
+  void _startAutoResetTimer() {
+    _autoResetTimer?.cancel();
+    _autoResetTimer = Timer(const Duration(seconds: 60), () {
+      if (mounted) {
+        setState(() {
+          _urlController.clear();
+          _lookupResult = null;
+          _showLookupProgress = false;
+          _lookupFailed = false;
+        });
+      }
+    });
+  }
+
   void _handleUrlChanged(String value) {
+    _autoResetTimer?.cancel();
     _lookupDebounce?.cancel();
     _lookupProgressDelay?.cancel();
     _scanService.cancelLookup();
@@ -199,10 +212,6 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
       _lookupResult = null;
       _showLookupProgress = false;
       _lookupFailed = false;
-      if (_hasResult) {
-        _hasResult = false;
-        _scanResult = null;
-      }
     });
     if (!_isValidLookupUrl(value)) return;
     _lookupDebounce = Timer(const Duration(milliseconds: 400), () {
@@ -261,6 +270,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
   }
 
   Future<void> _performScan() async {
+    _autoResetTimer?.cancel();
     final url = _urlController.text.trim();
     if (url.isEmpty) {
       _showSnackBar('Please enter a URL to scan', isError: true);
@@ -273,10 +283,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
       return;
     }
 
-    // ─── Duplicate Scan Prevention Check ───
+    // ─── Duplicate Scan Prevention Check (Local Provider Cache) ───
     final cleanInput = _normalizeUrl(url);
     try {
-      final recentScans = await _scanService.getRecentScans(userId: userId, limit: 10);
+      final recentScans = ref.read(recentScansProvider).value ?? [];
       UrlScanModel? cachedScan;
       for (final s in recentScans) {
         if (_normalizeUrl(s.scannedUrl) == cleanInput) {
@@ -297,6 +307,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
           });
           _resultAnimController.value = 1.0;
           _riskGaugeController.value = 1.0;
+          _startAutoResetTimer();
         }
         return;
       }
@@ -320,11 +331,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
 
     setState(() {
       _isScanning = true;
-      _hasResult = false;
       _isBlocked = false;
     });
-    _resultAnimController.reset();
-    _riskGaugeController.reset();
 
     try {
       final limitService = ref.read(scanLimitServiceProvider);
@@ -361,8 +369,11 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
         _isScanning = false;
         _hasResult = true;
       });
+      _resultAnimController.reset();
       _resultAnimController.forward();
+      _riskGaugeController.reset();
       _riskGaugeController.forward();
+      _startAutoResetTimer();
     } catch (e) {
       _scanLogTimer?.cancel();
       if (!mounted) return;
@@ -421,6 +432,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
   void _resetScan() {
     _lookupDebounce?.cancel();
     _lookupProgressDelay?.cancel();
+    _autoResetTimer?.cancel();
     _scanService.cancelLookup();
     _lookupGeneration++;
     _resultAnimController.reset();
@@ -1219,7 +1231,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                   child: _isScanning
                       ? _buildScanningIndicator()
                       : _hasResult && _scanResult != null
-                      ? _buildResultSection()
+                      ? _buildResultSection(_scanResult!)
                       : _lookupResult != null || _lookupFailed
                       ? const SizedBox.shrink(key: ValueKey('lookup-state'))
                       : _buildIdleState(),
@@ -1798,168 +1810,180 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
   // ──────────────────────────── Scanning Indicator ────────────────────────────
 
   Widget _buildScanningIndicator() {
+    final prevScan = _scanResult;
     return Container(
-      key: ValueKey('scanning'),
-      padding: EdgeInsets.symmetric(vertical: 40),
-      child: Center(
-        child: Column(
-          children: [
-            // Animated radar sweep
-            SizedBox(
-              width: 120,
-              height: 120,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  // Outer pulsing ring
-                  AnimatedBuilder(
-                    animation: _pulseController,
-                    builder: (context, _) {
-                      return Container(
-                        width: 120,
-                        height: 120,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: _primaryGreen.withValues(
-                              alpha: 0.1 + (_pulseController.value * 0.15),
+      key: const ValueKey('scanning'),
+      padding: const EdgeInsets.symmetric(vertical: 40),
+      child: Column(
+        children: [
+          Center(
+            child: Column(
+              children: [
+                // Animated radar sweep
+                SizedBox(
+                  width: 120,
+                  height: 120,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      // Outer pulsing ring
+                      AnimatedBuilder(
+                        animation: _pulseController,
+                        builder: (context, _) {
+                          return Container(
+                            width: 120,
+                            height: 120,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: _primaryGreen.withValues(
+                                  alpha: 0.1 + (_pulseController.value * 0.15),
+                                ),
+                                width: 2,
+                              ),
                             ),
-                            width: 2,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  // Middle ring
-                  AnimatedBuilder(
-                    animation: _pulseController,
-                    builder: (context, _) {
-                      final v = _pulseController.value;
-                      return Container(
-                        width: 90,
-                        height: 90,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: _primaryGreen.withValues(
-                            alpha: 0.04 + (v * 0.04),
-                          ),
-                          border: Border.all(
-                            color: _primaryGreen.withValues(
-                              alpha: 0.15 + (v * 0.1),
-                            ),
-                            width: 1.5,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  // Radar sweep
-                  AnimatedBuilder(
-                    animation: _radarSweepController,
-                    builder: (context, _) {
-                      return Transform.rotate(
-                        angle: _radarSweepController.value * 2 * math.pi,
-                        child: CustomPaint(
-                          size: Size(100, 100),
-                          painter: _RadarSweepPainter(color: _primaryGreen),
-                        ),
-                      );
-                    },
-                  ),
-                  // Center icon
-                  Container(
-                    padding: EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        colors: [_primaryGreen, Color(0xFF3ED65C)],
+                          );
+                        },
                       ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: _primaryGreen.withValues(alpha: 0.4),
-                          blurRadius: 16,
-                        ),
-                      ],
-                    ),
-                    child: Icon(
-                      Icons.radar_rounded,
-                      color: Colors.white,
-                      size: 24,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(height: 24),
-            Text(
-              'Analyzing URL...',
-              style: TextStyle(
-                color: _textPrimary,
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: _primaryGreen.withValues(alpha: 0.15),
-                ),
-              ),
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 200),
-                child: Text(
-                  _scanLogs[_currentLogIndex],
-                  key: ValueKey(_currentLogIndex),
-                  style: TextStyle(
-                    color: _primaryGreen.withValues(alpha: 0.85),
-                    fontSize: 12,
-                    fontFamily: 'monospace',
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ),
-            SizedBox(height: 20),
-            // Animated dots
-            SizedBox(
-              width: 40,
-              child: AnimatedBuilder(
-                animation: _pulseController,
-                builder: (context, _) {
-                  return Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: List.generate(3, (i) {
-                      final delay = i * 0.3;
-                      final v = ((_pulseController.value + delay) % 1.0);
-                      return Container(
-                        width: 6,
-                        height: 6,
+                      // Middle ring
+                      AnimatedBuilder(
+                        animation: _pulseController,
+                        builder: (context, _) {
+                          final v = _pulseController.value;
+                          return Container(
+                            width: 90,
+                            height: 90,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: _primaryGreen.withValues(
+                                  alpha: 0.04 + (v * 0.04)),
+                              border: Border.all(
+                                color: _primaryGreen.withValues(
+                                  alpha: 0.15 + (v * 0.1),
+                                ),
+                                width: 1.5,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      // Radar sweep
+                      AnimatedBuilder(
+                        animation: _radarSweepController,
+                        builder: (context, _) {
+                          return Transform.rotate(
+                            angle: _radarSweepController.value * 2 * math.pi,
+                            child: CustomPaint(
+                              size: const Size(100, 100),
+                              painter: _RadarSweepPainter(color: _primaryGreen),
+                            ),
+                          );
+                        },
+                      ),
+                      // Center icon
+                      Container(
+                        padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: _primaryGreen.withValues(
-                            alpha: 0.3 + (v * 0.7),
+                          gradient: LinearGradient(
+                            colors: [_primaryGreen, const Color(0xFF3ED65C)],
                           ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: _primaryGreen.withValues(alpha: 0.4),
+                              blurRadius: 16,
+                            ),
+                          ],
                         ),
+                        child: const Icon(
+                          Icons.radar_rounded,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  'Analyzing URL...',
+                  style: TextStyle(
+                    color: _textPrimary,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: _primaryGreen.withValues(alpha: 0.15),
+                    ),
+                  ),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 200),
+                    child: Text(
+                      _scanLogs[_currentLogIndex],
+                      key: ValueKey(_currentLogIndex),
+                      style: TextStyle(
+                        color: _primaryGreen.withValues(alpha: 0.85),
+                        fontSize: 12,
+                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                // Animated dots
+                SizedBox(
+                  width: 40,
+                  child: AnimatedBuilder(
+                    animation: _pulseController,
+                    builder: (context, _) {
+                      return Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: List.generate(3, (i) {
+                          final delay = i * 0.3;
+                          final v = ((_pulseController.value + delay) % 1.0);
+                          return Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: _primaryGreen.withValues(
+                                alpha: 0.3 + (v * 0.7),
+                              ),
+                            ),
+                          );
+                        }),
                       );
-                    }),
-                  );
-                },
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (prevScan != null) ...[
+            const SizedBox(height: 32),
+            Opacity(
+              opacity: 0.5,
+              child: AbsorbPointer(
+                child: _buildResultSection(prevScan),
               ),
             ),
           ],
-        ),
+        ],
       ),
     );
   }
 
   // ──────────────────────────── Result Section ────────────────────────────
 
-  Widget _buildResultSection() {
-    final scan = _scanResult!;
+  Widget _buildResultSection(UrlScanModel scan) {
     final isSafe = scan.isSafe;
     final riskScore = scan.riskScore ?? 0;
     final statusColor = isSafe ? _primaryGreen : _red;
