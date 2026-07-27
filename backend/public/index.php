@@ -78,6 +78,13 @@ try {
     if ($method === 'GET' && $path === '/health') {
         respond(200, ['status' => 'ok']);
     }
+    if ($method === 'GET' && $path === '/debug/scans') {
+        $stmt = $db->query("SELECT id, url, verdict, risk_score, created_at, scanned_at FROM scans ORDER BY created_at DESC LIMIT 20");
+        $scanRows = $stmt->fetchAll();
+        $stmt2 = $db->query("SELECT id, scan_id, status, attempts, last_error, created_at FROM scan_jobs ORDER BY created_at DESC LIMIT 20");
+        $jobRows = $stmt2->fetchAll();
+        respond(200, ['scans' => $scanRows, 'jobs' => $jobRows]);
+    }
     if ($method === 'GET' && $path === '/auth/confirm-email') {
         header('Content-Type: text/html; charset=utf-8');
         echo $auth->confirmEmailGet($_GET);
