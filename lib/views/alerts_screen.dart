@@ -11,6 +11,7 @@ import '../models/url_scan_model.dart';
 import '../models/blocked_url_model.dart';
 import '../services/exception_mapper.dart';
 import '../providers/app_providers.dart';
+import '../services/deep_link_service.dart';
 
 class AlertsScreen extends ConsumerStatefulWidget {
   const AlertsScreen({super.key});
