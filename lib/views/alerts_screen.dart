@@ -976,9 +976,25 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
             color: _primaryGreen,
             backgroundColor: _cardColor,
             child: ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
-              itemCount: _filteredHistoryScans.length,
+              itemCount: _filteredHistoryScans.length + 1,
               itemBuilder: (context, index) {
+                if (index == _filteredHistoryScans.length) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
+                      child: Text(
+                        "That's your most recent activity",
+                        style: TextStyle(
+                          color: _textMuted.withValues(alpha: 0.5),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  );
+                }
                 return _buildScanCard(
                   _filteredHistoryScans[index],
                   index,
@@ -1132,24 +1148,52 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   }
 
   Widget _buildScanCard(UrlScanModel scan, int index, {bool isGlobal = false}) {
-    final severity = _severityForScan(scan);
-    final sevColor = isGlobal ? _primaryGreen : _severityColor(severity);
+    final resultStr = scan.scanResult?.toLowerCase() ?? 'safe';
+    final isDangerous = resultStr == 'dangerous';
+    final isSuspicious = resultStr == 'suspicious';
+    final isPending = resultStr == 'pending';
+    final isError = resultStr == 'error';
+
+    final scannedAt = scan.scannedAt;
+    final isTimeout = isPending && scannedAt != null && DateTime.now().difference(scannedAt).inMinutes >= 2;
+
+    final severity = isPending || isError ? 'LOW' : _severityForScan(scan);
+    final sevColor = isGlobal 
+        ? _primaryGreen 
+        : (isPending || isError ? Colors.grey : _severityColor(severity));
+
     final score = scan.riskScore ?? 0;
-    final isSuspicious = scan.scanResult?.toLowerCase() == 'suspicious';
+    
     final resultColor = isGlobal
         ? _red
-        : scan.isSafe
-        ? _primaryGreen
-        : isSuspicious
-        ? _amber
-        : _red;
+        : isPending
+            ? (isTimeout ? Colors.orange : Colors.grey)
+            : isError
+                ? Colors.grey
+                : scan.isSafe
+                    ? _primaryGreen
+                    : isSuspicious
+                        ? _amber
+                        : _red;
+                        
     final resultLabel = isGlobal
         ? 'BLOCKED'
-        : scan.isSafe
-        ? 'SAFE'
-        : isSuspicious
-        ? 'SUSPICIOUS'
-        : 'DANGER';
+        : isPending
+            ? (isTimeout ? 'INCOMPLETE' : 'PENDING')
+            : isError
+                ? 'ERROR'
+                : scan.isSafe
+                    ? 'SAFE'
+                    : isSuspicious
+                        ? 'SUSPICIOUS'
+                        : 'DANGER';
+
+    final tapAction = isTimeout 
+        ? () {
+            ref.read(tabIndexProvider.notifier).state = 1;
+            ref.read(deepLinkUrlProvider.notifier).state = scan.scannedUrl;
+          }
+        : () => context.push('/scan-detail/${scan.scanId}');
 
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.0, end: 1.0),
@@ -1164,7 +1208,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
               color: Colors.transparent,
               child: InkWell(
                 borderRadius: BorderRadius.circular(16),
-                onTap: () => context.push('/scan-detail/${scan.scanId}'),
+                onTap: tapAction,
                 child: child,
               ),
             ),
@@ -1280,11 +1324,11 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                                 const Spacer(),
                                 // Time
                                 Text(
-                                  _timeAgo(scan.scannedAt),
+                                  isTimeout ? 'Tap to retry' : _timeAgo(scan.scannedAt),
                                   style: TextStyle(
-                                    color: _textPrimary.withValues(alpha: 0.3),
+                                    color: isTimeout ? Colors.orange : _textPrimary.withValues(alpha: 0.3),
                                     fontSize: 10,
-                                    fontWeight: FontWeight.w500,
+                                    fontWeight: isTimeout ? FontWeight.bold : FontWeight.w500,
                                   ),
                                 ),
                               ],
@@ -1305,17 +1349,26 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                             Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Icon(
-                                  isGlobal
-                                      ? Icons.block_flipped
-                                      : (scan.isSafe
-                                            ? Icons.check_circle_outline_rounded
-                                            : Icons.warning_amber_rounded),
-                                  color: isGlobal
-                                      ? _red
-                                      : (scan.isSafe ? _primaryGreen : _amber),
-                                  size: 16,
-                                ),
+                                isPending
+                                    ? SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor: AlwaysStoppedAnimation<Color>(resultColor),
+                                        ),
+                                      )
+                                    : Icon(
+                                        isGlobal
+                                            ? Icons.block_flipped
+                                            : isError
+                                                ? Icons.error_outline_rounded
+                                                : scan.isSafe
+                                                    ? Icons.check_circle_outline_rounded
+                                                    : Icons.warning_amber_rounded,
+                                        color: resultColor,
+                                        size: 16,
+                                      ),
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(

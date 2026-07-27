@@ -185,7 +185,26 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
     _radarSweepController.dispose();
     _riskGaugeController.dispose();
     _buttonBounceController.dispose();
+    _pendingScansTimer?.cancel();
     super.dispose();
+  }
+
+  Timer? _pendingScansTimer;
+
+  void _startPendingScansPolling() {
+    if (_pendingScansTimer != null) return;
+    _pendingScansTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
+      if (mounted) {
+        ref.invalidate(recentScansProvider);
+      } else {
+        timer.cancel();
+      }
+    });
+  }
+
+  void _stopPendingScansPolling() {
+    _pendingScansTimer?.cancel();
+    _pendingScansTimer = null;
   }
 
   void _startAutoResetTimer() {
@@ -612,6 +631,17 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
         const SizedBox(height: 16),
         recentScansAsync.when(
           data: (scans) {
+            final hasPending = scans.any((s) => s.scanResult?.toLowerCase() == 'pending');
+            if (hasPending) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                _startPendingScansPolling();
+              });
+            } else {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                _stopPendingScansPolling();
+              });
+            }
+
             if (scans.isEmpty) {
               return Container(
                 padding: const EdgeInsets.symmetric(
@@ -698,6 +728,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
     final isPending = resultStr == 'pending';
     final isError = resultStr == 'error';
 
+    final scannedAt = scan.scannedAt;
+    final isTimeout = isPending && scannedAt != null && DateTime.now().difference(scannedAt).inMinutes >= 2;
+
     Color statusColor = _primaryGreen;
     IconData statusIcon = Icons.shield_rounded;
     String statusText = 'Safe';
@@ -711,9 +744,15 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
       statusIcon = Icons.warning_amber_rounded;
       statusText = 'Warning';
     } else if (isPending) {
-      statusColor = Colors.grey;
-      statusIcon = Icons.hourglass_empty_rounded;
-      statusText = 'Pending';
+      if (isTimeout) {
+        statusColor = Colors.orange;
+        statusIcon = Icons.refresh_rounded;
+        statusText = 'Incomplete';
+      } else {
+        statusColor = Colors.grey;
+        statusIcon = Icons.hourglass_empty_rounded;
+        statusText = 'Pending';
+      }
     } else if (isError) {
       statusColor = Colors.grey;
       statusIcon = Icons.error_outline_rounded;
@@ -733,7 +772,12 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
     } catch (_) {}
 
     return GestureDetector(
-      onTap: () => _showScanDetails(scan),
+      onTap: isTimeout
+          ? () {
+              _urlController.text = scan.scannedUrl;
+              _performScan();
+            }
+          : () => _showScanDetails(scan),
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
@@ -757,14 +801,14 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
           children: [
             // Status Icon with glowing circle backing
             Container(
-              padding: isPending ? const EdgeInsets.all(11) : const EdgeInsets.all(10),
+              padding: isPending && !isTimeout ? const EdgeInsets.all(11) : const EdgeInsets.all(10),
               width: 40,
               height: 40,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: statusColor.withValues(alpha: 0.08),
               ),
-              child: isPending
+              child: isPending && !isTimeout
                   ? SizedBox(
                       width: 18,
                       height: 18,
@@ -826,10 +870,11 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  _getRelativeTime(scan.scannedAt),
+                  isTimeout ? 'Tap to retry' : _getRelativeTime(scan.scannedAt),
                   style: TextStyle(
-                    color: _textMuted.withValues(alpha: 0.6),
+                    color: isTimeout ? _amber : _textMuted.withValues(alpha: 0.6),
                     fontSize: 10,
+                    fontWeight: isTimeout ? FontWeight.bold : FontWeight.normal,
                   ),
                 ),
               ],
@@ -1209,7 +1254,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
   @override
   Widget build(BuildContext context) {
     ref.listen<int>(tabIndexProvider, (previous, next) {
-      if (next != 1) {
+      if (next == 1) {
+        ref.invalidate(recentScansProvider);
+        ref.invalidate(scanHistoryProvider);
+      } else {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _resetScan();
         });
@@ -1234,22 +1282,22 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
             ),
           ),
           SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 48, 20, 32),
+            padding: const EdgeInsets.fromLTRB(20, 32, 20, 32),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildTitleSection(),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 _buildUrlInput(),
                 if (_showLookupProgress ||
                     _lookupResult != null ||
                     _lookupFailed) ...[
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                   _buildLookupState(),
                 ],
-                const SizedBox(height: 20),
+                const SizedBox(height: 14),
                 _buildScanButton(),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 500),
                   switchInCurve: Curves.easeOutCubic,
@@ -1824,14 +1872,19 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
   // ──────────────────────────── Idle State ────────────────────────────
 
   Widget _buildIdleState() {
+    final hasHistory = ref.watch(recentScansProvider).value?.isNotEmpty ?? false;
+    if (hasHistory) {
+      return const SizedBox.shrink(key: ValueKey('idle-collapsed'));
+    }
+
     return Container(
       key: ValueKey('idle'),
-      padding: EdgeInsets.symmetric(vertical: 16),
+      padding: EdgeInsets.symmetric(vertical: 12),
       child: Center(
         child: Column(
           children: [
             Container(
-              padding: EdgeInsets.all(24),
+              padding: EdgeInsets.all(18),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: _primaryGreen.withValues(alpha: 0.06),
@@ -1843,19 +1896,19 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
               child: Icon(
                 Icons.security_rounded,
                 color: _primaryGreen.withValues(alpha: 0.3),
-                size: 48,
+                size: 40,
               ),
             ),
-            SizedBox(height: 20),
+            SizedBox(height: 14),
             Text(
               'Enter a URL to check its safety',
               style: TextStyle(
                 color: _textPrimary.withValues(alpha: 0.3),
-                fontSize: 14,
+                fontSize: 13,
                 fontWeight: FontWeight.w500,
               ),
             ),
-            SizedBox(height: 6),
+            SizedBox(height: 4),
             Text(
               'We analyze URLs against 70+ security engines',
               style: TextStyle(
