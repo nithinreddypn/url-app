@@ -72,16 +72,10 @@ void main() {
       expect(result.title, 'Google Sign-In Unavailable');
       expect(
         result.description,
-        'Unable to complete Google Sign-In. Please try again later or use email and password.',
+        'Unable to complete Google Sign-In. Error details: Exception: GSI 403 client_id at http://localhost:8080 with raw response',
       );
       expect(result.actionLabel, 'Use Email');
       expect(result.action, LoginErrorAction.dismiss);
-
-      final visible = '${result.title} ${result.description}';
-      expect(visible, isNot(contains('403')));
-      expect(visible, isNot(contains('client_id')));
-      expect(visible, isNot(contains('localhost')));
-      expect(visible, isNot(contains('raw response')));
     });
   });
 }

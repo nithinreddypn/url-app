@@ -70,7 +70,12 @@ class LoginErrorHandler {
         );
       }
     }
-    return _googleUnavailable;
+    return LoginUiError(
+      title: 'Google Sign-In Unavailable',
+      description: 'Unable to complete Google Sign-In. Error details: $error',
+      actionLabel: 'Use Email',
+      action: LoginErrorAction.dismiss,
+    );
   }
 
   /// Maps an HTTP status without reading or exposing its raw response body.
