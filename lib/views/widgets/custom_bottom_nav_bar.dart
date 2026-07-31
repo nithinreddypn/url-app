@@ -22,16 +22,16 @@ class CustomBottomNavBar extends StatelessWidget {
 
     const items = [
       _NavigationItem('Home', Icons.home_outlined, Icons.home_rounded),
-      _NavigationItem('Scan', Icons.description_outlined, Icons.description),
+      _NavigationItem('Scan', Icons.radar_outlined, Icons.radar),
       _NavigationItem(
         'Alerts',
-        Icons.bar_chart_outlined,
-        Icons.bar_chart_rounded,
+        Icons.notifications_outlined,
+        Icons.notifications_rounded,
       ),
       _NavigationItem(
         'Settings',
-        Icons.person_outline_rounded,
-        Icons.person_rounded,
+        Icons.settings_outlined,
+        Icons.settings_rounded,
       ),
     ];
 
@@ -51,7 +51,7 @@ class CustomBottomNavBar extends StatelessWidget {
               border: Border.all(color: border),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.08),
+                  color: Colors.black.withOpacity(isDark ? 0.25 : 0.08),
                   blurRadius: 30,
                   offset: const Offset(0, 15),
                 ),

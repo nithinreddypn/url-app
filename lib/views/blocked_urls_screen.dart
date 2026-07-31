@@ -174,7 +174,7 @@ class _BlockedUrlsScreenState extends ConsumerState<BlockedUrlsScreen> {
           borderRadius: BorderRadius.circular(14),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
+              color: Colors.black.withOpacity(0.1),
               blurRadius: 8,
               offset: const Offset(0, 3),
             ),
@@ -186,14 +186,14 @@ class _BlockedUrlsScreenState extends ConsumerState<BlockedUrlsScreen> {
           decoration: InputDecoration(
             hintText: 'Search blocked URLs by domain or reason...',
             hintStyle: TextStyle(
-              color: _textPrimary.withValues(alpha: 0.3),
+              color: _textPrimary.withOpacity(0.3),
               fontSize: 13,
             ),
             prefixIcon: Padding(
               padding: const EdgeInsets.only(left: 14, right: 10),
               child: Icon(
                 Icons.search_rounded,
-                color: _textPrimary.withValues(alpha: 0.4),
+                color: _textPrimary.withOpacity(0.4),
                 size: 20,
               ),
             ),
@@ -201,7 +201,7 @@ class _BlockedUrlsScreenState extends ConsumerState<BlockedUrlsScreen> {
                 ? IconButton(
                     icon: Icon(
                       Icons.close_rounded,
-                      color: _textPrimary.withValues(alpha: 0.4),
+                      color: _textPrimary.withOpacity(0.4),
                       size: 18,
                     ),
                     onPressed: () {
@@ -215,13 +215,13 @@ class _BlockedUrlsScreenState extends ConsumerState<BlockedUrlsScreen> {
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
               borderSide: BorderSide(
-                color: _textPrimary.withValues(alpha: 0.08),
+                color: _textPrimary.withOpacity(0.08),
               ),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
               borderSide: BorderSide(
-                color: _textPrimary.withValues(alpha: 0.08),
+                color: _textPrimary.withOpacity(0.08),
               ),
             ),
             focusedBorder: OutlineInputBorder(
@@ -256,14 +256,14 @@ class _BlockedUrlsScreenState extends ConsumerState<BlockedUrlsScreen> {
                 child: Icon(
                   Icons.link_off_rounded,
                   size: 48,
-                  color: _textPrimary.withValues(alpha: 0.2),
+                  color: _textPrimary.withOpacity(0.2),
                 ),
               ),
               const SizedBox(height: 18),
               Text(
                 isListEmpty ? 'No Blocked URLs' : 'No results found',
                 style: TextStyle(
-                  color: _textPrimary.withValues(alpha: 0.6),
+                  color: _textPrimary.withOpacity(0.6),
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                 ),
@@ -275,7 +275,7 @@ class _BlockedUrlsScreenState extends ConsumerState<BlockedUrlsScreen> {
                     : 'Try checking your spelling or search terms.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: _textPrimary.withValues(alpha: 0.3),
+                  color: _textPrimary.withOpacity(0.3),
                   fontSize: 13,
                 ),
               ),
@@ -293,11 +293,11 @@ class _BlockedUrlsScreenState extends ConsumerState<BlockedUrlsScreen> {
         color: _cardColor,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: _red.withValues(alpha: 0.12),
+          color: _red.withOpacity(0.12),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 8,
             offset: const Offset(0, 3),
           ),
@@ -310,12 +310,12 @@ class _BlockedUrlsScreenState extends ConsumerState<BlockedUrlsScreen> {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: _red.withValues(alpha: 0.08),
+                color: _red.withOpacity(0.08),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
                 Icons.link_off_rounded,
-                color: _red.withValues(alpha: 0.7),
+                color: _red.withOpacity(0.7),
                 size: 20,
               ),
             ),
@@ -342,7 +342,7 @@ class _BlockedUrlsScreenState extends ConsumerState<BlockedUrlsScreen> {
                           child: Text(
                             url.reason!,
                             style: TextStyle(
-                              color: _textPrimary.withValues(alpha: 0.4),
+                              color: _textPrimary.withOpacity(0.4),
                               fontSize: 12,
                             ),
                             maxLines: 1,
@@ -352,14 +352,14 @@ class _BlockedUrlsScreenState extends ConsumerState<BlockedUrlsScreen> {
                         Text(
                           ' · ',
                           style: TextStyle(
-                            color: _textPrimary.withValues(alpha: 0.3),
+                            color: _textPrimary.withOpacity(0.3),
                           ),
                         ),
                       ],
                       Text(
                         _formatDate(url.blockedAt),
                         style: TextStyle(
-                          color: _textPrimary.withValues(alpha: 0.3),
+                          color: _textPrimary.withOpacity(0.3),
                           fontSize: 12,
                         ),
                       ),
@@ -384,7 +384,7 @@ class _BlockedUrlsScreenState extends ConsumerState<BlockedUrlsScreen> {
                   },
                   icon: Icon(
                     Icons.content_copy_rounded,
-                    color: _textPrimary.withValues(alpha: 0.55),
+                    color: _textPrimary.withOpacity(0.55),
                     size: 20,
                   ),
                   tooltip: 'Copy URL',
@@ -395,7 +395,7 @@ class _BlockedUrlsScreenState extends ConsumerState<BlockedUrlsScreen> {
                     onPressed: () => _unblockUrl(url),
                     icon: Icon(
                       Icons.delete_outline_rounded,
-                      color: _red.withValues(alpha: 0.65),
+                      color: _red.withOpacity(0.65),
                       size: 22,
                     ),
                     tooltip: 'Unblock',

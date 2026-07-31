@@ -236,7 +236,7 @@ extension AppThemeExtension on BuildContext {
       isDark ? AppPalette.darkTextPrimary : AppPalette.lightTextPrimary;
   Color get textSecondary =>
       isDark ? AppPalette.darkTextSecondary : AppPalette.lightTextSecondary;
-  Color get textMuted => textSecondary.withValues(alpha: isDark ? 0.60 : 0.70);
+  Color get textMuted => textSecondary.withOpacity(isDark ? 0.60 : 0.70);
   Color get bottomNavBg => cardBg;
   Color get inputBg => isDark ? AppPalette.darkSurface : AppPalette.lightCard;
   Color get hoverSurface =>

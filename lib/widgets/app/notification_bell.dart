@@ -23,7 +23,8 @@ class _NotificationBellState extends ConsumerState<NotificationBell> {
 
   @override
   void dispose() {
-    _closeDropdown();
+    _overlayEntry?.remove();
+    _overlayEntry = null;
     _buttonFocusNode.dispose();
     super.dispose();
   }
@@ -55,48 +56,62 @@ class _NotificationBellState extends ConsumerState<NotificationBell> {
   }
 
   OverlayEntry _createOverlayEntry() {
-    final renderBox = context.findRenderObject() as RenderBox;
-    final size = renderBox.size;
-
     return OverlayEntry(
-      builder: (context) => Stack(
-        children: [
-          // Gesture detector to close dropdown when tapping outside
-          GestureDetector(
-            onTap: _closeDropdown,
-            behavior: HitTestBehavior.translucent,
-            child: Container(
-              width: double.infinity,
-              height: double.infinity,
-              color: Colors.transparent,
+      builder: (context) {
+        final screenWidth = MediaQuery.of(context).size.width;
+        final renderBox = this.context.findRenderObject() as RenderBox?;
+        if (renderBox == null || !renderBox.attached) {
+          return const SizedBox.shrink();
+        }
+
+        final size = renderBox.size;
+        final position = renderBox.localToGlobal(Offset.zero);
+
+        final panelWidth = (screenWidth - 32).clamp(280.0, 360.0);
+        final idealLeft = position.dx + size.width - panelWidth;
+        final clampedLeft = idealLeft.clamp(16.0, screenWidth - panelWidth - 16.0);
+        final offsetX = clampedLeft - position.dx;
+        final offsetY = size.height + 8;
+
+        return Stack(
+          children: [
+            // Gesture detector to close dropdown when tapping outside (dimmed backdrop scrim)
+            GestureDetector(
+              onTap: _closeDropdown,
+              behavior: HitTestBehavior.translucent,
+              child: Container(
+                width: double.infinity,
+                height: double.infinity,
+                color: Colors.black.withOpacity(0.4),
+              ),
             ),
-          ),
-          Positioned(
-            width: 360,
-            child: CompositedTransformFollower(
-              link: _layerLink,
-              showWhenUnlinked: false,
-              offset: Offset(-360 + size.width, size.height + 8),
-              child: Material(
-                elevation: 8,
-                borderRadius: BorderRadius.circular(12),
-                color: Colors.transparent,
-                child: KeyboardListener(
-                  focusNode: FocusNode()..requestFocus(),
-                  onKeyEvent: (KeyEvent event) {
-                    if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.escape) {
-                      _closeDropdown();
-                    }
-                  },
-                  child: _NotificationPanel(
-                    onClose: _closeDropdown,
+            Positioned(
+              width: panelWidth,
+              child: CompositedTransformFollower(
+                link: _layerLink,
+                showWhenUnlinked: false,
+                offset: Offset(offsetX, offsetY),
+                child: Material(
+                  elevation: 8,
+                  borderRadius: BorderRadius.circular(12),
+                  color: Colors.transparent,
+                  child: KeyboardListener(
+                    focusNode: FocusNode()..requestFocus(),
+                    onKeyEvent: (KeyEvent event) {
+                      if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.escape) {
+                        _closeDropdown();
+                      }
+                    },
+                    child: _NotificationPanel(
+                      onClose: _closeDropdown,
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        ],
-      ),
+          ],
+        );
+      },
     );
   }
 
@@ -104,10 +119,9 @@ class _NotificationBellState extends ConsumerState<NotificationBell> {
   Widget build(BuildContext context) {
     final notificationsAsync = ref.watch(notificationsProvider);
     
-    final isDark = ref.watch(themeModeProvider) == ThemeMode.dark;
-    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
-    final borderColor = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
-    final textPrimary = isDark ? Colors.white : const Color(0xFF1E293B);
+    final cardBg = context.cardBg;
+    final borderColor = context.border;
+    final textPrimary = context.textPrimary;
 
     final unreadCount = notificationsAsync.value?.where((item) => !item.isRead).length ?? 0;
     final tooltipText = unreadCount > 0 ? '$unreadCount unread notifications' : 'Notifications';
@@ -131,27 +145,28 @@ class _NotificationBellState extends ConsumerState<NotificationBell> {
             child: Stack(
               clipBehavior: Clip.none,
               children: [
-                // 36x36 Square Bell Button
+                // 48x48 Rounded Bell Button
                 InkWell(
                   onTap: _toggleDropdown,
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(12),
                   child: Container(
-                    width: 36,
-                    height: 36,
+                    width: 48,
+                    height: 48,
                     decoration: BoxDecoration(
                       color: cardBg,
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: borderColor),
                     ),
                     child: Center(
                       child: Icon(
                         _isOpen ? Icons.notifications_rounded : Icons.notifications_none_rounded,
                         color: textPrimary,
-                        size: 18,
+                        size: 22,
                       ),
                     ),
                   ),
                 ),
+
                 
                 // Red circular/pill unread badge
                 if (unreadCount > 0)
@@ -198,12 +213,10 @@ class _NotificationPanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final notificationsAsync = ref.watch(notificationsProvider);
-    final isDark = ref.watch(themeModeProvider) == ThemeMode.dark;
-
-    final panelBg = isDark ? const Color(0xFF1E293B) : Colors.white;
-    final textPrimary = isDark ? Colors.white : const Color(0xFF1E293B);
-    final textSecondary = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
-    final borderColor = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
+    final panelBg = context.cardBg;
+    final textPrimary = context.textPrimary;
+    final textSecondary = context.textSecondary;
+    final borderColor = context.border;
 
     return Container(
       decoration: BoxDecoration(
@@ -317,10 +330,8 @@ class _NotificationHeader extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final notificationsAsync = ref.watch(notificationsProvider);
-    final isDark = ref.watch(themeModeProvider) == ThemeMode.dark;
-
-    final textPrimary = isDark ? Colors.white : const Color(0xFF1E293B);
-    final textSecondary = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+    final textPrimary = context.textPrimary;
+    final textSecondary = context.textSecondary;
 
     final items = notificationsAsync.value ?? [];
     final unreadCount = items.where((item) => !item.isRead).length;
@@ -328,70 +339,99 @@ class _NotificationHeader extends ConsumerWidget {
     final hasUnread = unreadCount > 0;
     final hasItems = items.isNotEmpty;
 
+    final screenWidth = MediaQuery.of(context).size.width;
+    final useTwoRows = screenWidth < 350;
+
+    final titleWidget = Text(
+      'Notifications',
+      style: TextStyle(
+        color: textPrimary,
+        fontSize: 14,
+        fontWeight: FontWeight.bold,
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+
+    final buttonsWrap = Wrap(
+      spacing: 8,
+      runSpacing: 4,
+      alignment: useTwoRows ? WrapAlignment.end : WrapAlignment.start,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        TextButton(
+          onPressed: hasUnread
+              ? () {
+                  ref.read(notificationsProvider.notifier).markAllAsRead();
+                  onClose();
+                }
+              : null,
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          child: Opacity(
+            opacity: hasUnread ? 1.0 : 0.4,
+            child: Text(
+              'Mark all as read',
+              style: TextStyle(
+                color: hasUnread ? Colors.blue : textSecondary,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
+        TextButton(
+          onPressed: hasItems
+              ? () {
+                  ref.read(notificationsProvider.notifier).clearAll();
+                  onClose();
+                }
+              : null,
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          child: Opacity(
+            opacity: hasItems ? 1.0 : 0.4,
+            child: Text(
+              'Clear all',
+              style: TextStyle(
+                color: hasItems ? Colors.red : textSecondary,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+
+    if (useTwoRows) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            titleWidget,
+            const SizedBox(height: 6),
+            buttonsWrap,
+          ],
+        ),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         children: [
-          Text(
-            'Notifications',
-            style: TextStyle(
-              color: textPrimary,
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const Spacer(),
-          
-          // Action Buttons
-          TextButton(
-            onPressed: hasUnread
-                ? () {
-                    ref.read(notificationsProvider.notifier).markAllAsRead();
-                    onClose();
-                  }
-                : null,
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            child: Opacity(
-              opacity: hasUnread ? 1.0 : 0.4,
-              child: Text(
-                'Mark all as read',
-                style: TextStyle(
-                  color: hasUnread ? Colors.blue : textSecondary,
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          TextButton(
-            onPressed: hasItems
-                ? () {
-                    ref.read(notificationsProvider.notifier).clearAll();
-                    onClose();
-                  }
-                : null,
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            child: Opacity(
-              opacity: hasItems ? 1.0 : 0.4,
-              child: Text(
-                'Clear all',
-                style: TextStyle(
-                  color: hasItems ? Colors.red : textSecondary,
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
+          Expanded(child: titleWidget),
+          const SizedBox(width: 12),
+          buttonsWrap,
         ],
       ),
     );
@@ -419,16 +459,14 @@ class NotificationItem extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isDark = ref.watch(themeModeProvider) == ThemeMode.dark;
-    
-    final textPrimary = isDark ? Colors.white : const Color(0xFF1E293B);
-    final textSecondary = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
-    final borderColor = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
+    final textPrimary = context.textPrimary;
+    final textSecondary = context.textSecondary;
+    final borderColor = context.border;
     
     // Background highlight for unread
     final itemBgColor = item.isRead
         ? Colors.transparent
-        : (isDark ? const Color(0xFF1E293B).withOpacity(0.5) : const Color(0xFFF8FAFC));
+        : context.secondaryCardBg;
 
     final iconColor = item.color;
 
@@ -449,7 +487,7 @@ class NotificationItem extends ConsumerWidget {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(6),
                   border: Border.all(color: borderColor),
-                  color: isDark ? const Color(0xFF0F172A).withOpacity(0.4) : const Color(0xFFF8FAFC),
+                  color: context.secondaryCardBg,
                 ),
                 child: Icon(
                   item.icon,
@@ -517,7 +555,7 @@ class NotificationItem extends ConsumerWidget {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: item.priorityColor.withValues(alpha: 0.1),
+                              color: item.priorityColor.withOpacity(0.1),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
@@ -558,12 +596,10 @@ class NotificationDetailDialog extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isDark = ref.watch(themeModeProvider) == ThemeMode.dark;
-    
-    final dialogBg = isDark ? const Color(0xFF1E293B) : Colors.white;
-    final textPrimary = isDark ? Colors.white : const Color(0xFF1E293B);
-    final textSecondary = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
-    final borderColor = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
+    final dialogBg = context.cardBg;
+    final textPrimary = context.textPrimary;
+    final textSecondary = context.textSecondary;
+    final borderColor = context.border;
 
     final iconColor = item.color;
 
@@ -586,7 +622,7 @@ class NotificationDetailDialog extends ConsumerWidget {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: borderColor),
-                    color: isDark ? const Color(0xFF0F172A).withOpacity(0.4) : const Color(0xFFF8FAFC),
+                    color: context.secondaryCardBg,
                   ),
                   child: Icon(
                     item.icon,

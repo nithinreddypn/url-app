@@ -22,7 +22,7 @@ class _AuthTokens {
 
   // Borders
   Color get border =>
-      isDark ? Colors.white.withValues(alpha: 0.06) : const Color(0xFFE2E8F0);
+      isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE2E8F0);
 
   // Text
   Color get textPrimary =>
@@ -139,14 +139,14 @@ class SectionTitle extends StatelessWidget {
             height: 96,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: t.accentGreen.withValues(alpha: 0.1),
+              color: t.accentGreen.withOpacity(0.1),
               border: Border.all(
-                color: t.accentGreen.withValues(alpha: 0.3),
+                color: t.accentGreen.withOpacity(0.3),
                 width: 1.5,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: t.accentGreen.withValues(alpha: 0.2),
+                  color: t.accentGreen.withOpacity(0.2),
                   blurRadius: 16,
                   spreadRadius: 2,
                 ),
@@ -188,9 +188,9 @@ class SectionTitle extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
-            color: t.accentGreen.withValues(alpha: 0.08),
+            color: t.accentGreen.withOpacity(0.08),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: t.accentGreen.withValues(alpha: 0.2)),
+            border: Border.all(color: t.accentGreen.withOpacity(0.2)),
           ),
           child: Text(
             trustIndicatorText,
@@ -271,7 +271,7 @@ class _AuthCardState extends State<AuthCard>
           border: Border.all(color: t.border, width: 1.0),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.08),
+              color: Colors.black.withOpacity(isDark ? 0.4 : 0.08),
               blurRadius: 30,
               offset: const Offset(0, 12),
             ),
@@ -389,7 +389,7 @@ class _CustomTextFieldState extends State<CustomTextField> {
               labelStyle: TextStyle(color: getIconLabelColor(), fontSize: 14),
               hintText: widget.hintText,
               hintStyle: TextStyle(
-                color: t.textSecondary.withValues(alpha: 0.5),
+                color: t.textSecondary.withOpacity(0.5),
                 fontSize: 14,
               ),
               prefixIcon: Icon(
@@ -546,7 +546,7 @@ class _PasswordFieldState extends State<PasswordField> {
               labelStyle: TextStyle(color: getIconLabelColor(), fontSize: 14),
               hintText: widget.hintText,
               hintStyle: TextStyle(
-                color: t.textSecondary.withValues(alpha: 0.5),
+                color: t.textSecondary.withOpacity(0.5),
                 fontSize: 14,
               ),
               prefixIcon: Icon(
@@ -652,7 +652,7 @@ class PrimaryButton extends StatelessWidget {
               ? LinearGradient(
                   colors: [
                     t.accentGreen,
-                    t.accentGreen.withValues(alpha: 0.85),
+                    t.accentGreen.withOpacity(0.85),
                   ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -662,7 +662,7 @@ class PrimaryButton extends StatelessWidget {
           boxShadow: isEnabled
               ? [
                   BoxShadow(
-                    color: t.accentGreen.withValues(alpha: 0.35),
+                    color: t.accentGreen.withOpacity(0.35),
                     blurRadius: 16,
                     offset: const Offset(0, 4),
                   ),
@@ -675,7 +675,7 @@ class PrimaryButton extends StatelessWidget {
             backgroundColor: Colors.transparent,
             foregroundColor: Colors.white,
             disabledBackgroundColor: Colors.transparent,
-            disabledForegroundColor: t.textSecondary.withValues(alpha: 0.5),
+            disabledForegroundColor: t.textSecondary.withOpacity(0.5),
             shadowColor: Colors.transparent,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
@@ -774,7 +774,7 @@ class GoogleButton extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.12 : 0.06),
+            color: Colors.black.withOpacity(isDark ? 0.12 : 0.06),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -937,9 +937,9 @@ class ValidationMessage extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: t.danger.withValues(alpha: 0.08),
+        color: t.danger.withOpacity(0.08),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: t.danger.withValues(alpha: 0.2)),
+        border: Border.all(color: t.danger.withOpacity(0.2)),
       ),
       child: Row(
         children: [
@@ -1013,7 +1013,7 @@ class _CyberBackgroundPainter extends CustomPainter {
     );
     paint.shader = RadialGradient(
       colors: [
-        accentGreen.withValues(alpha: isDark ? 0.09 : 0.05),
+        accentGreen.withOpacity(isDark ? 0.09 : 0.05),
         Colors.transparent,
       ],
     ).createShader(rectTR);
@@ -1026,7 +1026,7 @@ class _CyberBackgroundPainter extends CustomPainter {
     );
     paint.shader = RadialGradient(
       colors: [
-        accentGreen.withValues(alpha: isDark ? 0.06 : 0.03),
+        accentGreen.withOpacity(isDark ? 0.06 : 0.03),
         Colors.transparent,
       ],
     ).createShader(rectBL);
@@ -1034,8 +1034,8 @@ class _CyberBackgroundPainter extends CustomPainter {
 
     // Grid
     final gridColor = isDark
-        ? Colors.white.withValues(alpha: 0.012)
-        : Colors.black.withValues(alpha: 0.02);
+        ? Colors.white.withOpacity(0.012)
+        : Colors.black.withOpacity(0.02);
     final gridPaint = Paint()
       ..color = gridColor
       ..strokeWidth = 1.0;
@@ -1049,11 +1049,11 @@ class _CyberBackgroundPainter extends CustomPainter {
 
     // Network Node connection points
     final nodePaint = Paint()
-      ..color = accentGreen.withValues(alpha: 0.1)
+      ..color = accentGreen.withOpacity(0.1)
       ..style = PaintingStyle.fill;
 
     final linePaint = Paint()
-      ..color = accentGreen.withValues(alpha: 0.04)
+      ..color = accentGreen.withOpacity(0.04)
       ..strokeWidth = 1.0;
 
     final List<Offset> points = [
@@ -1073,7 +1073,7 @@ class _CyberBackgroundPainter extends CustomPainter {
       canvas.drawCircle(
         pt,
         7,
-        nodePaint..color = accentGreen.withValues(alpha: 0.03),
+        nodePaint..color = accentGreen.withOpacity(0.03),
       );
     }
   }

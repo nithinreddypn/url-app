@@ -80,12 +80,12 @@ class _IntelligentThreatReportCardState extends ConsumerState<IntelligentThreatR
       case 'approved':
       case 'verified':
       case 'high_risk':
-        return const Color(0xFFEF4444).withValues(alpha: 0.08);
+        return const Color(0xFFEF4444).withOpacity(0.08);
       case 'pending':
       case 'queued':
-        return const Color(0xFFEAB308).withValues(alpha: 0.05);
+        return const Color(0xFFEAB308).withOpacity(0.05);
       case 'needs_review':
-        return const Color(0xFFF97316).withValues(alpha: 0.06);
+        return const Color(0xFFF97316).withOpacity(0.06);
       default:
         return Colors.transparent;
     }
@@ -140,7 +140,7 @@ class _IntelligentThreatReportCardState extends ConsumerState<IntelligentThreatR
         decoration: BoxDecoration(
           color: cardBg,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: borderClr.withValues(alpha: 0.3), width: 1.5),
+          border: Border.all(color: borderClr.withOpacity(0.3), width: 1.5),
           boxShadow: [
             BoxShadow(
               color: shadowClr,
@@ -217,14 +217,14 @@ class _IntelligentThreatReportCardState extends ConsumerState<IntelligentThreatR
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: borderClr.withValues(alpha: 0.05),
+                color: borderClr.withOpacity(0.05),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: borderClr.withValues(alpha: 0.1)),
+                border: Border.all(color: borderClr.withOpacity(0.1)),
               ),
               child: Text(
                 msg,
                 style: TextStyle(
-                  color: textPrimary.withValues(alpha: 0.9),
+                  color: textPrimary.withOpacity(0.9),
                   fontSize: 12,
                   height: 1.4,
                 ),

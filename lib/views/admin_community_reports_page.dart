@@ -115,7 +115,7 @@ class _AdminCommunityReportsPageState extends ConsumerState<AdminCommunityReport
               controller: targetIdController,
               decoration: InputDecoration(
                 hintText: 'Target Report ID (UUID)',
-                hintStyle: TextStyle(color: context.textSecondary.withValues(alpha: 0.5)),
+                hintStyle: TextStyle(color: context.textSecondary.withOpacity(0.5)),
                 enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: context.border)),
                 focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: context.activeAccent)),
               ),
@@ -209,6 +209,7 @@ class _AdminCommunityReportsPageState extends ConsumerState<AdminCommunityReport
         backgroundColor: context.cardBg,
         elevation: 0,
         bottom: TabBar(
+          dividerColor: Colors.transparent,
           controller: _tabController,
           isScrollable: true,
           labelColor: primaryGreen,
@@ -293,7 +294,7 @@ class _AdminCommunityReportsPageState extends ConsumerState<AdminCommunityReport
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: context.warning.withValues(alpha: 0.1),
+                  color: context.warning.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
@@ -308,7 +309,7 @@ class _AdminCommunityReportsPageState extends ConsumerState<AdminCommunityReport
           // ID Reference (useful for merging)
           SelectableText(
             'Report ID: $id',
-            style: TextStyle(color: textSecondary.withValues(alpha: 0.6), fontSize: 10, fontFamily: 'monospace'),
+            style: TextStyle(color: textSecondary.withOpacity(0.6), fontSize: 10, fontFamily: 'monospace'),
           ),
           const SizedBox(height: 12),
 
@@ -347,7 +348,7 @@ class _AdminCommunityReportsPageState extends ConsumerState<AdminCommunityReport
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: surfaceColor.withValues(alpha: 0.1),
+              color: surfaceColor.withOpacity(0.1),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Row(

@@ -707,41 +707,44 @@ HTML;
         foreach ($rows as $row) {
             $isCurrent = ($row['id'] === $session['session_id']);
             
-            // Basic User Agent parser
             $ua = $row['user_agent'] ?: '';
-            $browser = 'Browser';
-            $device = 'Device';
+            $browser = 'Android';
+            $device = 'Android Device';
 
-            if (stripos($ua, 'firefox') !== false) {
-                $browser = 'Firefox';
-            } elseif (stripos($ua, 'chrome') !== false) {
-                $browser = 'Chrome';
-            } elseif (stripos($ua, 'safari') !== false) {
-                $browser = 'Safari';
-            } elseif (stripos($ua, 'edge') !== false) {
-                $browser = 'Edge';
-            } elseif (stripos($ua, 'opera') !== false) {
-                $browser = 'Opera';
+            // Check if it's our custom mobile user agent:
+            // URLDefender/5.1.0+6 (Mobile; Samsung Galaxy S23; Android 14)
+            if (stripos($ua, 'URLDefender/') === 0) {
+                if (preg_match('/\(([^)]+)\)/', $ua, $matches)) {
+                    $parts = explode(';', $matches[1]);
+                    if (count($parts) >= 3) {
+                        $device = trim($parts[1]); // e.g. "Samsung Galaxy S23" or "samsung SM-S911B"
+                        $browser = trim($parts[2]); // e.g. "Android 14" or "iOS 17"
+                    }
+                }
+            } else {
+                // Fallback parsing for legacy sessions (strictly mobile device categories)
+                if (stripos($ua, 'iphone') !== false) {
+                    $device = 'iPhone';
+                    $browser = 'iOS';
+                } elseif (stripos($ua, 'ipad') !== false) {
+                    $device = 'iPad';
+                    $browser = 'iOS';
+                } else {
+                    $device = 'Android Device';
+                    $browser = 'Android';
+                }
             }
 
-            if (stripos($ua, 'iphone') !== false) {
-                $device = 'iPhone';
-            } elseif (stripos($ua, 'ipad') !== false) {
-                $device = 'iPad';
-            } elseif (stripos($ua, 'android') !== false) {
-                $device = 'Android Device';
-            } elseif (stripos($ua, 'windows') !== false) {
-                $device = 'Windows PC';
-            } elseif (stripos($ua, 'macintosh') !== false || stripos($ua, 'mac os') !== false) {
-                $device = 'MacBook';
-            } elseif (stripos($ua, 'linux') !== false) {
-                $device = 'Linux PC';
+            // Ensure we never return "Browser" or web browser names. If it's fallback or generic, return "Android"
+            $cleanBrowser = trim($browser);
+            if (empty($cleanBrowser) || strcasecmp($cleanBrowser, 'Browser') === 0 || stripos($cleanBrowser, 'Chrome') !== false || stripos($cleanBrowser, 'Safari') !== false || stripos($cleanBrowser, 'Firefox') !== false || stripos($cleanBrowser, 'Mozilla') !== false) {
+                $cleanBrowser = 'Android';
             }
 
             $sessions[] = [
                 'id' => $row['id'],
                 'device' => $device,
-                'browser' => $browser . ' · ' . ($row['ip_address'] ?: 'Unknown IP'),
+                'browser' => $cleanBrowser . ' · ' . ($row['ip_address'] ?: 'Unknown IP'),
                 'isCurrent' => $isCurrent ? 'true' : 'false',
             ];
         }

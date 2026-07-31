@@ -246,7 +246,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     bool isHeader = false,
   }) {
     final baseColor = isHeader
-        ? Colors.white.withValues(alpha: 0.12)
+        ? Colors.white.withOpacity(0.12)
         : _cardColor;
     return Container(
       width: width,
@@ -347,7 +347,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             border: Border.all(color: borderColor),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.15),
+                color: Colors.black.withOpacity(0.15),
                 blurRadius: 20,
                 offset: const Offset(0, -4),
               ),
@@ -361,7 +361,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: textSecondary.withValues(alpha: 0.3),
+                  color: textSecondary.withOpacity(0.3),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -419,7 +419,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: item.color.withValues(alpha: 0.12),
+                  color: item.color.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(item.icon, color: item.color, size: 20),
@@ -451,7 +451,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               ),
               Icon(
                 Icons.arrow_forward_ios_rounded,
-                color: textSecondary.withValues(alpha: 0.4),
+                color: textSecondary.withOpacity(0.4),
                 size: 14,
               ),
             ],
@@ -491,55 +491,54 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               firstName = rawFirstName[0].toUpperCase() + rawFirstName.substring(1).toLowerCase();
             }
             firstName = '$firstName..';
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Row(
-                  children: [
-                    _HeaderIconButton(
-                      icon: Icons.menu_rounded,
-                      onTap: () => _showQuickNavSheet(context),
-                    ),
-                    const Spacer(),
-                    const NotificationBell(),
-                    const SizedBox(width: 12),
-                    _UserAvatar(
-                      user: user,
-                      onTap: _onAvatarTap,
-                      getAvatarInitial: _getAvatarInitial,
-                    ),
-                  ],
+                _UserAvatar(
+                  user: user,
+                  onTap: _onAvatarTap,
+                  getAvatarInitial: _getAvatarInitial,
                 ),
-                const SizedBox(height: 20),
-                Text(
-                  _getTimeBasedGreeting(),
-                  style: TextStyle(
-                    color: _textSecondary,
-                    fontSize: 24,
-                    fontWeight: FontWeight.w500,
-                    letterSpacing: -0.5,
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _getTimeBasedGreeting(),
+                        style: TextStyle(
+                          color: _textSecondary,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        firstName,
+                        style: TextStyle(
+                          color: _textPrimary,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.5,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  firstName,
-                  style: TextStyle(
-                    color: _textPrimary,
-                    fontSize: 36,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -1.0,
-                  ),
-                ),
+                const NotificationBell(),
               ],
             );
           },
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 20),
         _AnimatedSearchBar(
           isDark: context.isDark,
           onTap: () => _showQuickNavSheet(context),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 20),
         const _DashboardSecurityCard(),
       ],
     );
@@ -556,7 +555,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           _QuickToolCard(
             title: 'Quick Scan',
             icon: Icons.qr_code_scanner_rounded,
-            iconBg: _primaryGreen.withValues(alpha: 0.12),
+            iconBg: _primaryGreen.withOpacity(0.12),
             iconColor: _primaryGreen,
             onTap: () => widget.onNavigateToScan?.call(),
           ),
@@ -564,7 +563,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           _QuickToolCard(
             title: 'Threat Alerts',
             icon: Icons.notifications_active_outlined,
-            iconBg: _amber.withValues(alpha: 0.12),
+            iconBg: _amber.withOpacity(0.12),
             iconColor: _amber,
             onTap: () {
               ref.read(alertsTabProvider.notifier).state = 0;
@@ -575,7 +574,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           _QuickToolCard(
             title: 'Blocked List',
             icon: Icons.block_rounded,
-            iconBg: _red.withValues(alpha: 0.12),
+            iconBg: _red.withOpacity(0.12),
             iconColor: _red,
             onTap: () => context.push('/blocked_list'),
           ),
@@ -583,7 +582,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           _QuickToolCard(
             title: 'Community Threats',
             icon: Icons.public_outlined,
-            iconBg: Colors.teal.withValues(alpha: 0.12),
+            iconBg: Colors.teal.withOpacity(0.12),
             iconColor: Colors.teal,
             onTap: () => context.push('/community-reports'),
           ),
@@ -599,7 +598,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 child: _QuickToolCard(
                   title: 'Quick Scan',
                   icon: Icons.qr_code_scanner_rounded,
-                  iconBg: _primaryGreen.withValues(alpha: 0.12),
+                  iconBg: _primaryGreen.withOpacity(0.12),
                   iconColor: _primaryGreen,
                   onTap: () => widget.onNavigateToScan?.call(),
                 ),
@@ -609,7 +608,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 child: _QuickToolCard(
                   title: 'Threat Alerts',
                   icon: Icons.notifications_active_outlined,
-                  iconBg: _amber.withValues(alpha: 0.12),
+                  iconBg: _amber.withOpacity(0.12),
                   iconColor: _amber,
                   onTap: () {
                     ref.read(alertsTabProvider.notifier).state = 0;
@@ -626,7 +625,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 child: _QuickToolCard(
                   title: 'Blocked List',
                   icon: Icons.block_rounded,
-                  iconBg: _red.withValues(alpha: 0.12),
+                  iconBg: _red.withOpacity(0.12),
                   iconColor: _red,
                   onTap: () => context.push('/blocked_list'),
                 ),
@@ -636,7 +635,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 child: _QuickToolCard(
                   title: 'Community Threats',
                   icon: Icons.public_outlined,
-                  iconBg: Colors.teal.withValues(alpha: 0.12),
+                  iconBg: Colors.teal.withOpacity(0.12),
                   iconColor: Colors.teal,
                   onTap: () => context.push('/community-reports'),
                 ),
@@ -725,7 +724,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         border: Border.all(color: _surfaceColor),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF0F172A).withValues(alpha: 0.08),
+            color: const Color(0xFF0F172A).withOpacity(0.08),
             blurRadius: 24,
             offset: const Offset(0, 10),
           ),
@@ -775,7 +774,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               border: Border.all(color: _surfaceColor),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
+                  color: Colors.black.withOpacity(0.04),
                   blurRadius: 8,
                   offset: const Offset(0, 4),
                 ),
@@ -790,12 +789,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     gradient: LinearGradient(
                       colors: isSafe
                           ? [
-                              const Color(0xFF0B4C44).withValues(alpha: 0.85),
-                              const Color(0xFF064E3B).withValues(alpha: 0.7),
+                              const Color(0xFF0B4C44).withOpacity(0.85),
+                              const Color(0xFF064E3B).withOpacity(0.7),
                             ]
                           : [
-                              const Color(0xFF7F1D1D).withValues(alpha: 0.85),
-                              const Color(0xFF991B1B).withValues(alpha: 0.7),
+                              const Color(0xFF7F1D1D).withOpacity(0.85),
+                              const Color(0xFF991B1B).withOpacity(0.7),
                             ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
@@ -816,7 +815,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.3),
+                          color: Colors.black.withOpacity(0.3),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Row(
@@ -846,7 +845,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                         isSafe
                             ? Icons.verified_user_rounded
                             : Icons.warning_rounded,
-                        color: Colors.white.withValues(alpha: 0.9),
+                        color: Colors.white.withOpacity(0.9),
                         size: 22,
                       ),
                     ],
@@ -877,7 +876,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: resultColor.withValues(alpha: 0.12),
+                              color: resultColor.withOpacity(0.12),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
@@ -933,7 +932,7 @@ class _HeaderIconButton extends StatelessWidget {
             border: Border.all(color: context.border),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF0F172A).withValues(alpha: 0.08),
+                color: const Color(0xFF0F172A).withOpacity(0.08),
                 blurRadius: 16,
                 offset: const Offset(0, 6),
               ),
@@ -970,11 +969,11 @@ class _DashboardSecurityCard extends ConsumerWidget {
           end: Alignment.bottomRight,
         ),
         border: Border.all(
-          color: AppPalette.darkAccentGreen.withValues(alpha: 0.6),
+          color: AppPalette.darkAccentGreen.withOpacity(0.6),
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF22C55E).withValues(alpha: 0.18),
+            color: const Color(0xFF22C55E).withOpacity(0.18),
             blurRadius: 45,
             offset: const Offset(0, 18),
           ),
@@ -995,7 +994,7 @@ class _DashboardSecurityCard extends ConsumerWidget {
                     Text(
                       'URL DEFENDER',
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.65),
+                        color: Colors.white.withOpacity(0.65),
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0.5,
@@ -1039,7 +1038,7 @@ class _DashboardSecurityCard extends ConsumerWidget {
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
-                        color: AppPalette.darkWarning.withValues(alpha: 0.8),
+                        color: AppPalette.darkWarning.withOpacity(0.8),
                       ),
                     ),
                     child: Text(
@@ -1066,7 +1065,7 @@ class _DashboardSecurityCard extends ConsumerWidget {
                 value: value,
                 minHeight: 4,
                 color: AppPalette.darkAccentGreen,
-                backgroundColor: Colors.white.withValues(alpha: 0.13),
+                backgroundColor: Colors.white.withOpacity(0.13),
               ),
             ),
           ),
@@ -1076,7 +1075,7 @@ class _DashboardSecurityCard extends ConsumerWidget {
               Text(
                 '$usedScans of $totalScans scans used',
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.72),
+                  color: Colors.white.withOpacity(0.72),
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
                 ),
@@ -1167,7 +1166,7 @@ class _ShieldActivePillState extends State<_ShieldActivePill>
             BoxShadow(
               color: const Color(
                 0xFF39FF88,
-              ).withValues(alpha: 0.12 + (_controller.value * 0.14)),
+              ).withOpacity(0.12 + (_controller.value * 0.14)),
               blurRadius: 12 + (_controller.value * 8),
             ),
           ],
@@ -1207,9 +1206,9 @@ class _SecurityFeature extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.055),
+        color: Colors.white.withOpacity(0.055),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+        border: Border.all(color: Colors.white.withOpacity(0.07)),
       ),
       child: Column(
         children: [
@@ -1263,7 +1262,7 @@ class _QuickToolCard extends StatelessWidget {
           border: Border.all(color: border),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF0F172A).withValues(alpha: 0.08),
+              color: const Color(0xFF0F172A).withOpacity(0.08),
               blurRadius: 16,
               offset: const Offset(0, 6),
             ),
@@ -1291,7 +1290,7 @@ class _QuickToolCard extends StatelessWidget {
             ),
             Icon(
               Icons.arrow_forward_ios_rounded,
-              color: textMuted.withValues(alpha: 0.6),
+              color: textMuted.withOpacity(0.6),
               size: 12,
             ),
           ],
@@ -1375,18 +1374,18 @@ class _UserAvatarState extends State<_UserAvatar> {
               end: Alignment.bottomRight,
             ),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.35),
+              color: Colors.white.withOpacity(0.35),
               width: 1.5,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.25),
+                color: Colors.black.withOpacity(0.25),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
                 spreadRadius: 1,
               ),
               BoxShadow(
-                color: const Color(0xFF22C55E).withValues(alpha: 0.3),
+                color: const Color(0xFF22C55E).withOpacity(0.3),
                 blurRadius: 12,
                 spreadRadius: 2,
               ),
@@ -1403,7 +1402,7 @@ class _UserAvatarState extends State<_UserAvatar> {
                     height: 50,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.white.withValues(alpha: 0.1),
+                      color: Colors.white.withOpacity(0.1),
                     ),
                   ),
                 ),
@@ -1664,7 +1663,7 @@ class _SubscriptionDashboardCardState
               shape: BoxShape.circle,
               gradient: RadialGradient(
                 colors: [
-                  const Color(0xFF5CED73).withValues(alpha: 0.15),
+                  const Color(0xFF5CED73).withOpacity(0.15),
                   Colors.transparent,
                 ],
               ),
@@ -1679,9 +1678,7 @@ class _SubscriptionDashboardCardState
             borderRadius: BorderRadius.circular(30),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(
-                  alpha: isDarkTheme ? 0.35 : 0.12,
-                ),
+                color: Colors.black.withOpacity(isDarkTheme ? 0.35 : 0.12),
                 blurRadius: 28,
                 offset: const Offset(0, 12),
               ),
@@ -1698,7 +1695,7 @@ class _SubscriptionDashboardCardState
                       tintColor: const Color(
                         0xFF141614,
                       ), // Dark card base color
-                      noiseColor: Colors.white.withValues(alpha: 0.02),
+                      noiseColor: Colors.white.withOpacity(0.02),
                       borderColorStart: borderColorStart,
                       borderColorEnd: const Color(
                         0xFFFFD700,
@@ -1734,12 +1731,12 @@ class _SubscriptionDashboardCardState
                                   decoration: BoxDecoration(
                                     color: const Color(
                                       0xFF1A7A3A,
-                                    ).withValues(alpha: 0.06),
+                                    ).withOpacity(0.06),
                                     borderRadius: BorderRadius.circular(20),
                                     border: Border.all(
                                       color: const Color(
                                         0xFF1A7A3A,
-                                      ).withValues(alpha: 0.5),
+                                      ).withOpacity(0.5),
                                       width: 1.0,
                                     ),
                                   ),
@@ -1805,16 +1802,12 @@ class _SubscriptionDashboardCardState
                                     0xFF141614,
                                   ), // Dark circle background matching card
                                   border: Border.all(
-                                    color: config.glowColor.withValues(
-                                      alpha: 0.35,
-                                    ),
+                                    color: config.glowColor.withOpacity(0.35),
                                     width: 1.5,
                                   ),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: config.glowColor.withValues(
-                                        alpha: 0.12,
-                                      ),
+                                      color: config.glowColor.withOpacity(0.12),
                                       blurRadius: 10,
                                       spreadRadius: 1,
                                     ),
@@ -1829,14 +1822,10 @@ class _SubscriptionDashboardCardState
                                   vertical: 4,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: config.glowColor.withValues(
-                                    alpha: 0.15,
-                                  ),
+                                  color: config.glowColor.withOpacity(0.15),
                                   borderRadius: BorderRadius.circular(20),
                                   border: Border.all(
-                                    color: config.glowColor.withValues(
-                                      alpha: 0.4,
-                                    ),
+                                    color: config.glowColor.withOpacity(0.4),
                                     width: 1.0,
                                   ),
                                 ),
@@ -1862,7 +1851,7 @@ class _SubscriptionDashboardCardState
                           height: 3,
                           width: double.infinity,
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.08),
+                            color: Colors.white.withOpacity(0.08),
                             borderRadius: BorderRadius.circular(1.5),
                           ),
                           child: LayoutBuilder(
@@ -1880,7 +1869,7 @@ class _SubscriptionDashboardCardState
                                       BoxShadow(
                                         color: const Color(
                                           0xFF5CED73,
-                                        ).withValues(alpha: 0.4),
+                                        ).withOpacity(0.4),
                                         blurRadius: 6,
                                         spreadRadius: 1,
                                       ),
@@ -1898,7 +1887,7 @@ class _SubscriptionDashboardCardState
                             Text(
                               '$usedScans of $totalScans scans used',
                               style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.45),
+                                color: Colors.white.withOpacity(0.45),
                                 fontSize: 12,
                                 fontWeight: FontWeight.w500,
                               ),
@@ -1946,7 +1935,7 @@ class _SubscriptionDashboardCardState
                             Text(
                               '$usedScans scans used this month',
                               style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.45),
+                                color: Colors.white.withOpacity(0.45),
                                 fontSize: 12,
                                 fontWeight: FontWeight.w500,
                               ),
@@ -1972,10 +1961,10 @@ class _SubscriptionDashboardCardState
                           vertical: 10,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.02),
+                          color: Colors.white.withOpacity(0.02),
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.04),
+                            color: Colors.white.withOpacity(0.04),
                             width: 1,
                           ),
                         ),
@@ -2023,7 +2012,7 @@ class _SubscriptionDashboardCardState
         Icon(
           icon,
           size: 18,
-          color: const Color(0xFF5CED73).withValues(alpha: 0.8),
+          color: const Color(0xFF5CED73).withOpacity(0.8),
         ),
         const SizedBox(width: 10),
         Flexible(
@@ -2046,7 +2035,7 @@ class _SubscriptionDashboardCardState
     return Container(
       height: 20,
       width: 1,
-      color: Colors.white.withValues(alpha: 0.1),
+      color: Colors.white.withOpacity(0.1),
     );
   }
 }
@@ -2087,12 +2076,12 @@ class _RenewButtonState extends State<_RenewButton> {
             ),
             borderRadius: BorderRadius.circular(26),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.15),
+              color: Colors.white.withOpacity(0.15),
               width: 1.2,
             ),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF1A7A3A).withValues(alpha: 0.35),
+                color: const Color(0xFF1A7A3A).withOpacity(0.35),
                 blurRadius: 16,
                 offset: const Offset(0, 6),
               ),
@@ -2223,8 +2212,8 @@ class _DynamicSubscriptionArtworkState extends State<DynamicSubscriptionArtwork>
                 boxShadow: [
                   BoxShadow(
                     color: widget.isPremium
-                        ? widget.tierGlowColor.withValues(alpha: 0.45)
-                        : const Color(0xFF1A7A3A).withValues(alpha: 0.2),
+                        ? widget.tierGlowColor.withOpacity(0.45)
+                        : const Color(0xFF1A7A3A).withOpacity(0.2),
                     blurRadius: widget.isPremium ? 36 : 22,
                     spreadRadius: widget.isPremium ? 10 : 2,
                   ),
@@ -2255,7 +2244,7 @@ class _DynamicSubscriptionArtworkState extends State<DynamicSubscriptionArtwork>
                       color: widget.tierColor,
                       shadows: [
                         Shadow(
-                          color: widget.tierGlowColor.withValues(alpha: 0.6),
+                          color: widget.tierGlowColor.withOpacity(0.6),
                           blurRadius: 12,
                         ),
                       ],
@@ -2280,7 +2269,7 @@ class _DynamicSubscriptionArtworkState extends State<DynamicSubscriptionArtwork>
                             BoxShadow(
                               color: const Color(
                                 0xFF1A7A3A,
-                              ).withValues(alpha: 0.3),
+                              ).withOpacity(0.3),
                               blurRadius: 4,
                             ),
                           ],
@@ -2419,10 +2408,10 @@ class _HolographicRingPainter extends CustomPainter {
     final center = Offset(w / 2, h / 2);
 
     if (isPremium) {
-      paint.color = _ringColor.withValues(alpha: 0.25);
+      paint.color = _ringColor.withOpacity(0.25);
       canvas.drawCircle(center, w / 2, paint);
 
-      paint.color = _ringColor.withValues(alpha: 0.35);
+      paint.color = _ringColor.withOpacity(0.35);
       paint.strokeWidth = 1.5;
       final double radius = w / 2.3;
       const int segments = 40;
@@ -2484,12 +2473,12 @@ class _HolographicRingPainter extends CustomPainter {
         final double y = center.dy + currentRadius * math.sin(angle);
 
         final double opacity = (1.0 - progress) * 0.7;
-        dotPaint.color = _particleColor.withValues(alpha: opacity);
+        dotPaint.color = _particleColor.withOpacity(opacity);
 
         canvas.drawCircle(Offset(x, y), particleRadii[i], dotPaint);
       }
     } else {
-      paint.color = const Color(0xFFCD7F32).withValues(alpha: 0.2);
+      paint.color = const Color(0xFFCD7F32).withOpacity(0.2);
       canvas.drawCircle(center, w / 2.2, paint);
     }
   }
@@ -2615,7 +2604,7 @@ class _AnimatedSearchBarState extends State<_AnimatedSearchBar>
           ),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF0F172A).withValues(alpha: 0.08),
+              color: const Color(0xFF0F172A).withOpacity(0.08),
               blurRadius: 16,
               offset: const Offset(0, 6),
             ),
@@ -2653,7 +2642,7 @@ class _AnimatedSearchBarState extends State<_AnimatedSearchBar>
             ),
             Icon(
               Icons.arrow_forward_ios_rounded,
-              color: hintColor.withValues(alpha: widget.isDark ? 0.5 : 0.45),
+              color: hintColor.withOpacity(widget.isDark ? 0.5 : 0.45),
               size: 14,
             ),
           ],
@@ -2799,8 +2788,8 @@ class GlassCardPainter extends CustomPainter {
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
       colors: [
-        Colors.white.withValues(alpha: 0.16),
-        Colors.white.withValues(alpha: 0.04),
+        Colors.white.withOpacity(0.16),
+        Colors.white.withOpacity(0.04),
         Colors.transparent,
       ],
       stops: const [0.0, 0.4, 1.0],
@@ -2906,7 +2895,7 @@ class _GlowingPulseLineState extends State<GlowingPulseLine>
                       height: 3,
                       width: double.infinity,
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.08),
+                        color: Colors.white.withOpacity(0.08),
                         borderRadius: BorderRadius.circular(1.5),
                       ),
                     ),
@@ -2918,7 +2907,7 @@ class _GlowingPulseLineState extends State<GlowingPulseLine>
                         borderRadius: BorderRadius.circular(1.5),
                         boxShadow: [
                           BoxShadow(
-                            color: greenColor.withValues(alpha: glowOpacity),
+                            color: greenColor.withOpacity(glowOpacity),
                             blurRadius: 6.0 * glowScale,
                             spreadRadius: 1.0 * glowScale,
                           ),
@@ -2950,7 +2939,7 @@ class _GlowingPulseLineState extends State<GlowingPulseLine>
                 RichText(
                   text: TextSpan(
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.4),
+                      color: Colors.white.withOpacity(0.4),
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
                     ),
@@ -3112,8 +3101,8 @@ class _WatermarkShieldPainter extends CustomPainter {
     final cy = h * 0.45;
     final fillPaint = Paint()..style = PaintingStyle.fill;
 
-    final baseOpacityColor = Colors.white.withValues(alpha: 0.02);
-    final altOpacityColor = Colors.white.withValues(alpha: 0.05);
+    final baseOpacityColor = Colors.white.withOpacity(0.02);
+    final altOpacityColor = Colors.white.withOpacity(0.05);
 
     // Top-Left
     fillPaint.color = baseOpacityColor;
@@ -3150,7 +3139,7 @@ class _WatermarkShieldPainter extends CustomPainter {
     canvas.restore();
 
     final linePaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.06)
+      ..color = Colors.white.withOpacity(0.06)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5;
 
@@ -3158,7 +3147,7 @@ class _WatermarkShieldPainter extends CustomPainter {
     canvas.drawLine(Offset(0, cy), Offset(w, cy), linePaint);
 
     final outlinePaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.09)
+      ..color = Colors.white.withOpacity(0.09)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.0;
     canvas.drawPath(path, outlinePaint);

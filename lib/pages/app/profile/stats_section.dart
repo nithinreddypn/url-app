@@ -81,17 +81,24 @@ class StatsSection extends ConsumerWidget {
           ),
         ];
 
-        final crossCount = (isDesktop || isTablet) ? 4 : 2;
-        final ratio = (isDesktop || isTablet) ? 1.3 : 1.15;
-
-        return GridView.count(
-          crossAxisCount: crossCount,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-          childAspectRatio: ratio,
-          children: cards,
+        return Column(
+          children: [
+            Row(
+              children: [
+                Expanded(child: cards[0]),
+                const SizedBox(width: 12),
+                Expanded(child: cards[1]),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(child: cards[2]),
+                const SizedBox(width: 12),
+                Expanded(child: cards[3]),
+              ],
+            ),
+          ],
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -127,7 +134,7 @@ class StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
         color: cardBg,
         borderRadius: BorderRadius.circular(16),
@@ -135,56 +142,46 @@ class StatCard extends StatelessWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisAlignment: MainAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: color.withOpacity(0.3)),
-                ),
-                child: Icon(icon, color: color, size: 18),
-              ),
-            ],
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: color.withOpacity(0.3)),
+            ),
+            child: Icon(icon, color: color, size: 18),
           ),
           const SizedBox(height: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TweenAnimationBuilder<int>(
-                tween: IntTween(begin: 0, end: value),
-                duration: const Duration(milliseconds: 900),
-                curve: Curves.easeOut,
-                builder: (context, val, child) {
-                  return Text(
-                    isPercentage ? '$val%' : val.toString(),
-                    style: TextStyle(
-                      color: textPrimary,
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 2),
-              Text(
-                label,
+          TweenAnimationBuilder<int>(
+            tween: IntTween(begin: 0, end: value),
+            duration: const Duration(milliseconds: 900),
+            curve: Curves.easeOut,
+            builder: (context, val, child) {
+              return Text(
+                isPercentage ? '$val%' : val.toString(),
                 style: TextStyle(
-                  color: textMuted,
-                  fontSize: 9,
+                  color: textPrimary,
+                  fontSize: 24,
                   fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
+                  fontFeatures: const [FontFeature.tabularFigures()],
                 ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
+              );
+            },
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: textMuted,
+              fontSize: 9,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.5,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),

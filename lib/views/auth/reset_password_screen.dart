@@ -203,9 +203,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen>
                             color: Colors.white,
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withValues(
-                                  alpha: 0.08 + 0.07 * _glowAnimation.value,
-                                ),
+                                color: Colors.black.withOpacity(0.08 + 0.07 * _glowAnimation.value),
                                 blurRadius: 20 + 10 * _glowAnimation.value,
                                 spreadRadius: 2 * _glowAnimation.value,
                               ),

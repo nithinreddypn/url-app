@@ -154,6 +154,9 @@ class MonthlyActivityChart extends ConsumerWidget {
                         sideTitles: SideTitles(
                           showTitles: true,
                           getTitlesWidget: (double value, TitleMeta meta) {
+                            if (value != value.roundToDouble()) {
+                              return const SizedBox.shrink();
+                            }
                             final idx = value.toInt();
                             if (idx < 0 || idx >= listKeys.length) return const SizedBox.shrink();
                             return SideTitleWidget(
@@ -172,10 +175,16 @@ class MonthlyActivityChart extends ConsumerWidget {
                         sideTitles: SideTitles(
                           showTitles: true,
                           getTitlesWidget: (double value, TitleMeta meta) {
-                            if (value % (maxY / 4).ceil() != 0) return const SizedBox.shrink();
-                            return Text(
-                              value.toInt().toString(),
-                              style: TextStyle(color: textSecondary, fontSize: 9),
+                            if (value != value.roundToDouble()) {
+                              return const SizedBox.shrink();
+                            }
+                            return SideTitleWidget(
+                              axisSide: meta.axisSide,
+                              space: 6,
+                              child: Text(
+                                value.toInt().toString(),
+                                style: TextStyle(color: textSecondary, fontSize: 9),
+                              ),
                             );
                           },
                           reservedSize: 24,
@@ -187,7 +196,7 @@ class MonthlyActivityChart extends ConsumerWidget {
                     gridData: FlGridData(
                       show: true,
                       drawVerticalLine: false,
-                      horizontalInterval: (maxY / 4).ceilToDouble(),
+                      horizontalInterval: (maxY / 4).ceilToDouble().clamp(1.0, double.infinity),
                       getDrawingHorizontalLine: (value) {
                         return FlLine(
                           color: borderColor.withOpacity(0.5),

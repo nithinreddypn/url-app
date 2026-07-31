@@ -34,7 +34,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
   Color get _textMuted => context.textMuted;
 
   final _urlController = TextEditingController();
-  final _scanService = UrlScanService();
+  late final UrlScanService _scanService;
   final _blockedService = BlockedUrlService();
 
   bool _isScanning = false;
@@ -48,6 +48,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
   int _lookupGeneration = 0;
   bool _showLookupProgress = false;
   bool _lookupFailed = false;
+  bool _isDisposed = false;
 
   Timer? _scanLogTimer;
   int _currentLogIndex = 0;
@@ -67,8 +68,12 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
   bool _isErasing = false;
 
   void _startHintTypingAnimation() {
+    if (_isDisposed) return;
     _typingTimer = Timer.periodic(const Duration(milliseconds: 120), (timer) {
-      if (!mounted) return;
+      if (_isDisposed || !mounted) {
+        timer.cancel();
+        return;
+      }
       final currentWord = _hintKeywords[_keywordIndex];
       setState(() {
         if (!_isErasing) {
@@ -78,7 +83,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
             _isErasing = true;
             timer.cancel();
             Future.delayed(const Duration(milliseconds: 2000), () {
-              if (mounted) {
+              if (mounted && !_isDisposed) {
                 _startHintTypingAnimation();
               }
             });
@@ -91,7 +96,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
             _keywordIndex = (_keywordIndex + 1) % _hintKeywords.length;
             timer.cancel();
             Future.delayed(const Duration(milliseconds: 600), () {
-              if (mounted) {
+              if (mounted && !_isDisposed) {
                 _startHintTypingAnimation();
               }
             });
@@ -120,6 +125,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
   @override
   void initState() {
     super.initState();
+    _scanService = ref.read(urlScanServiceProvider);
     _resultAnimController = AnimationController(
       vsync: this,
       duration: Duration(milliseconds: 800),
@@ -173,12 +179,13 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
 
   @override
   void dispose() {
+    _isDisposed = true;
     _typingTimer?.cancel();
     _scanLogTimer?.cancel();
     _lookupDebounce?.cancel();
     _lookupProgressDelay?.cancel();
     _autoResetTimer?.cancel();
-    _scanService.dispose();
+    _scanService.cancelLookup();
     _urlController.dispose();
     _resultAnimController.dispose();
     _pulseController.dispose();
@@ -192,12 +199,14 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
   Timer? _pendingScansTimer;
 
   void _startPendingScansPolling() {
+    if (_isDisposed) return;
     if (_pendingScansTimer != null) return;
     _pendingScansTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
-      if (mounted) {
+      if (mounted && !_isDisposed) {
         ref.invalidate(recentScansProvider);
       } else {
         timer.cancel();
+        _pendingScansTimer = null;
       }
     });
   }
@@ -307,7 +316,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
     // ─── Duplicate Scan Prevention Check (Local Provider Cache) ───
     final cleanInput = _normalizeUrl(url);
     try {
-      final recentScans = ref.read(recentScansProvider).value ?? [];
+      final recentScans = ref.read(recentScansProvider).valueOrNull ?? [];
       UrlScanModel? cachedScan;
       for (final s in recentScans) {
         if (_normalizeUrl(s.scannedUrl) == cleanInput) {
@@ -317,7 +326,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
       }
       
       final finalScan = cachedScan;
-      if (finalScan != null) {
+      if (finalScan != null &&
+          finalScan.scanResult?.toLowerCase() != 'pending' &&
+          finalScan.scanResult?.toLowerCase() != 'error') {
         _scanLogTimer?.cancel();
         if (mounted) {
           setState(() {
@@ -589,7 +600,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
               children: [
                 Icon(
                   Icons.history_rounded,
-                  color: _primaryGreen.withValues(alpha: 0.8),
+                  color: _primaryGreen.withOpacity(0.8),
                   size: 20,
                 ),
                 const SizedBox(width: 8),
@@ -631,18 +642,23 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
         const SizedBox(height: 16),
         recentScansAsync.when(
           data: (scans) {
-            final hasPending = scans.any((s) => s.scanResult?.toLowerCase() == 'pending');
+            final displayScans = scans.take(5).toList();
+            final hasPending = displayScans.any((s) => s.scanResult?.toLowerCase() == 'pending');
             if (hasPending) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                _startPendingScansPolling();
+                if (mounted && !_isDisposed) {
+                  _startPendingScansPolling();
+                }
               });
             } else {
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                _stopPendingScansPolling();
+                if (mounted && !_isDisposed) {
+                  _stopPendingScansPolling();
+                }
               });
             }
 
-            if (scans.isEmpty) {
+            if (displayScans.isEmpty) {
               return Container(
                 padding: const EdgeInsets.symmetric(
                   vertical: 24,
@@ -653,34 +669,16 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                   color: _cardColor,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: _surfaceColor.withValues(alpha: 0.08),
+                    color: _surfaceColor.withOpacity(0.08),
                   ),
                 ),
                 child: Center(
                   child: Text(
                     'No recent scans found',
                     style: TextStyle(
-                      color: _textMuted.withValues(alpha: 0.6),
+                      color: _textMuted.withOpacity(0.6),
                       fontSize: 13,
                     ),
-                  ),
-                ),
-              );
-            }
-
-            if (scans.length > 4) {
-              return SizedBox(
-                height: 336,
-                child: Scrollbar(
-                  thumbVisibility: true,
-                  child: ListView.separated(
-                    physics: const BouncingScrollPhysics(),
-                    itemCount: scans.length,
-                    separatorBuilder: (context, index) => const SizedBox(height: 12),
-                    itemBuilder: (context, index) {
-                      final scan = scans[index];
-                      return _buildRecentScanCard(scan);
-                    },
                   ),
                 ),
               );
@@ -689,10 +687,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
             return ListView.separated(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              itemCount: scans.length,
+              itemCount: displayScans.length,
               separatorBuilder: (context, index) => const SizedBox(height: 12),
               itemBuilder: (context, index) {
-                final scan = scans[index];
+                final scan = displayScans[index];
                 return _buildRecentScanCard(scan);
               },
             );
@@ -785,13 +783,13 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isDangerous
-                ? _red.withValues(alpha: 0.2)
-                : _surfaceColor.withValues(alpha: 0.08),
+                ? _red.withOpacity(0.2)
+                : _surfaceColor.withOpacity(0.08),
             width: isDangerous ? 1.5 : 1,
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.02),
+              color: Colors.black.withOpacity(0.02),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -806,7 +804,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
               height: 40,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: statusColor.withValues(alpha: 0.08),
+                color: statusColor.withOpacity(0.08),
               ),
               child: isPending && !isTimeout
                   ? SizedBox(
@@ -856,7 +854,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha: 0.12),
+                    color: statusColor.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
@@ -872,7 +870,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                 Text(
                   isTimeout ? 'Tap to retry' : _getRelativeTime(scan.scannedAt),
                   style: TextStyle(
-                    color: isTimeout ? _amber : _textMuted.withValues(alpha: 0.6),
+                    color: isTimeout ? _amber : _textMuted.withOpacity(0.6),
                     fontSize: 10,
                     fontWeight: isTimeout ? FontWeight.bold : FontWeight.normal,
                   ),
@@ -923,7 +921,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.15),
+                color: Colors.black.withOpacity(0.15),
                 blurRadius: 20,
                 offset: const Offset(0, -4),
               ),
@@ -940,7 +938,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                   width: 36,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: _textMuted.withValues(alpha: 0.2),
+                    color: _textMuted.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -972,10 +970,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: statusColor.withValues(alpha: 0.06),
+                  color: statusColor.withOpacity(0.06),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: statusColor.withValues(alpha: 0.15),
+                    color: statusColor.withOpacity(0.15),
                     width: 1.5,
                   ),
                 ),
@@ -985,7 +983,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: statusColor.withValues(alpha: 0.1),
+                        color: statusColor.withOpacity(0.1),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(statusIcon, color: statusColor, size: 24),
@@ -1036,7 +1034,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                       borderRadius: BorderRadius.circular(6),
                       child: LinearProgressIndicator(
                         value: (scan.riskScore ?? 0) / 100.0,
-                        backgroundColor: _surfaceColor.withValues(alpha: 0.1),
+                        backgroundColor: _surfaceColor.withOpacity(0.1),
                         valueColor: AlwaysStoppedAnimation<Color>(statusColor),
                         minHeight: 8,
                       ),
@@ -1118,7 +1116,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                   color: _cardColor,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: _surfaceColor.withValues(alpha: 0.1),
+                    color: _surfaceColor.withOpacity(0.1),
                   ),
                 ),
                 child: Row(
@@ -1187,7 +1185,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                       style: OutlinedButton.styleFrom(
                         foregroundColor: _textPrimary,
                         side: BorderSide(
-                          color: _textMuted.withValues(alpha: 0.3),
+                          color: _textMuted.withOpacity(0.3),
                         ),
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
@@ -1216,7 +1214,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
       decoration: BoxDecoration(
         color: _cardColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _surfaceColor.withValues(alpha: 0.08)),
+        border: Border.all(color: _surfaceColor.withOpacity(0.08)),
       ),
       child: Row(
         children: [
@@ -1281,73 +1279,75 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
               },
             ),
           ),
-          SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 32, 20, 32),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildTitleSection(),
-                const SizedBox(height: 12),
-                _buildUrlInput(),
-                if (_showLookupProgress ||
-                    _lookupResult != null ||
-                    _lookupFailed) ...[
+          SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildTitleSection(),
                   const SizedBox(height: 12),
-                  _buildLookupState(),
-                ],
-                const SizedBox(height: 14),
-                _buildScanButton(),
-                const SizedBox(height: 12),
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 500),
-                  switchInCurve: Curves.easeOutCubic,
-                  switchOutCurve: Curves.easeIn,
-                  transitionBuilder: (child, animation) {
-                    return FadeTransition(
-                      opacity: animation,
-                      child: SlideTransition(
-                        position: Tween<Offset>(
-                          begin: const Offset(0, 0.15),
-                          end: Offset.zero,
-                        ).animate(animation),
-                        child: child,
-                      ),
-                    );
-                  },
-                  child: _isScanning
-                      ? _buildScanningIndicator()
-                      : _hasResult && _scanResult != null
-                      ? _buildResultSection(_scanResult!)
-                      : _lookupResult != null || _lookupFailed
-                      ? const SizedBox.shrink(key: ValueKey('lookup-state'))
-                      : _buildIdleState(),
-                ),
-                _buildRecentActivitySection(),
-                const SizedBox(height: 32),
-                Center(
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.verified_user_rounded,
-                        color: _textMuted.withValues(alpha: 0.45),
-                        size: 14,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Secure 256-bit SSL Scan · History is private',
-                        style: TextStyle(
-                          color: _textMuted.withValues(alpha: 0.45),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                          letterSpacing: 0.2,
+                  _buildUrlInput(),
+                  if (_showLookupProgress ||
+                      _lookupResult != null ||
+                      _lookupFailed) ...[
+                    const SizedBox(height: 12),
+                    _buildLookupState(),
+                  ],
+                  const SizedBox(height: 14),
+                  _buildScanButton(),
+                  const SizedBox(height: 12),
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 500),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeIn,
+                    transitionBuilder: (child, animation) {
+                      return FadeTransition(
+                        opacity: animation,
+                        child: SlideTransition(
+                          position: Tween<Offset>(
+                            begin: const Offset(0, 0.15),
+                            end: Offset.zero,
+                          ).animate(animation),
+                          child: child,
                         ),
-                      ),
-                    ],
+                      );
+                    },
+                    child: _isScanning
+                        ? _buildScanningIndicator()
+                        : _hasResult && _scanResult != null
+                        ? _buildResultSection(_scanResult!)
+                        : _lookupResult != null || _lookupFailed
+                        ? const SizedBox.shrink(key: ValueKey('lookup-state'))
+                        : _buildIdleState(),
                   ),
-                ),
-                const SizedBox(height: 16),
-              ],
+                  _buildRecentActivitySection(),
+                  const SizedBox(height: 32),
+                  Center(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.verified_user_rounded,
+                          color: _textMuted.withOpacity(0.45),
+                          size: 14,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Secure 256-bit SSL Scan · History is private',
+                          style: TextStyle(
+                            color: _textMuted.withOpacity(0.45),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ),
             ),
           ),
         ],
@@ -1372,9 +1372,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: _primaryGreen.withValues(
-                      alpha: 0.2 + (_pulseController.value * 0.15),
-                    ),
+                    color: _primaryGreen.withOpacity(0.2 + (_pulseController.value * 0.15)),
                     blurRadius: 16 + (_pulseController.value * 8),
                     offset: Offset(0, 4),
                   ),
@@ -1422,7 +1420,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.15),
+            color: Colors.black.withOpacity(0.15),
             blurRadius: 16,
             offset: Offset(0, 6),
           ),
@@ -1435,14 +1433,14 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
         decoration: InputDecoration(
           hintText: _hintText,
           hintStyle: TextStyle(
-            color: _textPrimary.withValues(alpha: 0.2),
+            color: _textPrimary.withOpacity(0.2),
             fontSize: 14,
           ),
           prefixIcon: Padding(
             padding: EdgeInsets.only(left: 16, right: 12),
             child: Icon(
               Icons.language_rounded,
-              color: _primaryGreen.withValues(alpha: 0.6),
+              color: _primaryGreen.withOpacity(0.6),
               size: 22,
             ),
           ),
@@ -1450,7 +1448,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
               ? IconButton(
                   icon: Icon(
                     Icons.close_rounded,
-                    color: _textPrimary.withValues(alpha: 0.4),
+                    color: _textPrimary.withOpacity(0.4),
                     size: 20,
                   ),
                   onPressed: () {
@@ -1464,11 +1462,11 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
           contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 18),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(18),
-            borderSide: BorderSide(color: _surfaceColor.withValues(alpha: 0.3)),
+            borderSide: BorderSide(color: _surfaceColor.withOpacity(0.3)),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(18),
-            borderSide: BorderSide(color: _surfaceColor.withValues(alpha: 0.3)),
+            borderSide: BorderSide(color: _surfaceColor.withOpacity(0.3)),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(18),
@@ -1491,7 +1489,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
         decoration: BoxDecoration(
           color: _cardColor,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: _surfaceColor.withValues(alpha: 0.35)),
+          border: Border.all(color: _surfaceColor.withOpacity(0.35)),
         ),
         child: Row(
           children: [
@@ -1553,12 +1551,12 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
       key: ValueKey('lookup-${analysis.url}-$status'),
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: statusColor.withValues(alpha: context.isDark ? 0.10 : 0.06),
+        color: statusColor.withOpacity(context.isDark ? 0.10 : 0.06),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: statusColor.withValues(alpha: 0.38)),
+        border: Border.all(color: statusColor.withOpacity(0.38)),
         boxShadow: [
           BoxShadow(
-            color: statusColor.withValues(alpha: 0.10),
+            color: statusColor.withOpacity(0.10),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -1573,7 +1571,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: statusColor.withValues(alpha: 0.14),
+                  color: statusColor.withOpacity(0.14),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(statusIcon, color: statusColor, size: 23),
@@ -1611,7 +1609,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: statusColor.withValues(alpha: 0.14),
+                  color: statusColor.withOpacity(0.14),
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
@@ -1698,7 +1696,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
               label: const Text('View Details'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: statusColor,
-                side: BorderSide(color: statusColor.withValues(alpha: 0.45)),
+                side: BorderSide(color: statusColor.withOpacity(0.45)),
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
@@ -1722,7 +1720,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
       decoration: BoxDecoration(
         color: _cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _surfaceColor.withValues(alpha: 0.35)),
+        border: Border.all(color: _surfaceColor.withOpacity(0.35)),
       ),
       child: Row(
         children: [
@@ -1759,9 +1757,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: _cardColor.withValues(alpha: 0.78),
+          color: _cardColor.withOpacity(0.78),
           borderRadius: BorderRadius.circular(13),
-          border: Border.all(color: _surfaceColor.withValues(alpha: 0.25)),
+          border: Border.all(color: _surfaceColor.withOpacity(0.25)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1791,6 +1789,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
 
   Widget _buildScanButton() {
     return GestureDetector(
+      key: const ValueKey('scan_button'),
       onTapDown: (_) => _buttonBounceController.forward(),
       onTapUp: (_) {
         _buttonBounceController.reverse();
@@ -1813,8 +1812,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
             gradient: _isScanning
                 ? LinearGradient(
                     colors: [
-                      _primaryGreen.withValues(alpha: 0.4),
-                      Color(0xFF3ED65C).withValues(alpha: 0.4),
+                      _primaryGreen.withOpacity(0.4),
+                      Color(0xFF3ED65C).withOpacity(0.4),
                     ],
                   )
                 : LinearGradient(
@@ -1826,7 +1825,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                 ? []
                 : [
                     BoxShadow(
-                      color: _primaryGreen.withValues(alpha: 0.4),
+                      color: _primaryGreen.withOpacity(0.4),
                       blurRadius: 20,
                       offset: Offset(0, 8),
                     ),
@@ -1872,7 +1871,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
   // ──────────────────────────── Idle State ────────────────────────────
 
   Widget _buildIdleState() {
-    final hasHistory = ref.watch(recentScansProvider).value?.isNotEmpty ?? false;
+    final hasHistory = ref.watch(recentScansProvider).valueOrNull?.isNotEmpty ?? false;
     if (hasHistory) {
       return const SizedBox.shrink(key: ValueKey('idle-collapsed'));
     }
@@ -1887,15 +1886,15 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
               padding: EdgeInsets.all(18),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: _primaryGreen.withValues(alpha: 0.06),
+                color: _primaryGreen.withOpacity(0.06),
                 border: Border.all(
-                  color: _primaryGreen.withValues(alpha: 0.1),
+                  color: _primaryGreen.withOpacity(0.1),
                   width: 2,
                 ),
               ),
               child: Icon(
                 Icons.security_rounded,
-                color: _primaryGreen.withValues(alpha: 0.3),
+                color: _primaryGreen.withOpacity(0.3),
                 size: 40,
               ),
             ),
@@ -1903,7 +1902,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
             Text(
               'Enter a URL to check its safety',
               style: TextStyle(
-                color: _textPrimary.withValues(alpha: 0.3),
+                color: _textPrimary.withOpacity(0.3),
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
               ),
@@ -1912,7 +1911,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
             Text(
               'We analyze URLs against 70+ security engines',
               style: TextStyle(
-                color: _textPrimary.withValues(alpha: 0.2),
+                color: _textPrimary.withOpacity(0.2),
                 fontSize: 12,
               ),
             ),
@@ -1951,9 +1950,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               border: Border.all(
-                                color: _primaryGreen.withValues(
-                                  alpha: 0.1 + (_pulseController.value * 0.15),
-                                ),
+                                color: _primaryGreen.withOpacity(0.1 + (_pulseController.value * 0.15)),
                                 width: 2,
                               ),
                             ),
@@ -1970,12 +1967,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                             height: 90,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: _primaryGreen.withValues(
-                                  alpha: 0.04 + (v * 0.04)),
+                              color: _primaryGreen.withOpacity(0.04 + (v * 0.04)),
                               border: Border.all(
-                                color: _primaryGreen.withValues(
-                                  alpha: 0.15 + (v * 0.1),
-                                ),
+                                color: _primaryGreen.withOpacity(0.15 + (v * 0.1)),
                                 width: 1.5,
                               ),
                             ),
@@ -2005,7 +1999,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: _primaryGreen.withValues(alpha: 0.4),
+                              color: _primaryGreen.withOpacity(0.4),
                               blurRadius: 16,
                             ),
                           ],
@@ -2032,10 +2026,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.2),
+                    color: Colors.black.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                      color: _primaryGreen.withValues(alpha: 0.15),
+                      color: _primaryGreen.withOpacity(0.15),
                     ),
                   ),
                   child: AnimatedSwitcher(
@@ -2044,7 +2038,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                       _scanLogs[_currentLogIndex],
                       key: ValueKey(_currentLogIndex),
                       style: TextStyle(
-                        color: _primaryGreen.withValues(alpha: 0.85),
+                        color: _primaryGreen.withOpacity(0.85),
                         fontSize: 12,
                         fontFamily: 'monospace',
                         fontWeight: FontWeight.w500,
@@ -2069,9 +2063,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                             height: 6,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: _primaryGreen.withValues(
-                                alpha: 0.3 + (v * 0.7),
-                              ),
+                              color: _primaryGreen.withOpacity(0.3 + (v * 0.7)),
                             ),
                           );
                         }),
@@ -2131,17 +2123,17 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
               color: _cardColor,
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                color: statusColor.withValues(alpha: 0.15),
+                color: statusColor.withOpacity(0.15),
                 width: 1,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: statusColor.withValues(alpha: 0.06),
+                  color: statusColor.withOpacity(0.06),
                   blurRadius: 40,
                   offset: Offset(0, 12),
                 ),
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.12),
+                  color: Colors.black.withOpacity(0.12),
                   blurRadius: 20,
                   offset: Offset(0, 6),
                 ),
@@ -2158,7 +2150,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        statusColor.withValues(alpha: 0.08),
+                        statusColor.withOpacity(0.08),
                         Colors.transparent,
                       ],
                     ),
@@ -2189,7 +2181,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
                                   border: Border.all(
-                                    color: statusColor.withValues(alpha: 0.15),
+                                    color: statusColor.withOpacity(0.15),
                                     width: 1.5,
                                   ),
                                 ),
@@ -2202,19 +2194,17 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                                   shape: BoxShape.circle,
                                   gradient: RadialGradient(
                                     colors: [
-                                      statusColor.withValues(alpha: 0.2),
-                                      statusColor.withValues(alpha: 0.06),
+                                      statusColor.withOpacity(0.2),
+                                      statusColor.withOpacity(0.06),
                                     ],
                                   ),
                                   border: Border.all(
-                                    color: statusColor.withValues(alpha: 0.35),
+                                    color: statusColor.withOpacity(0.35),
                                     width: 2,
                                   ),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: statusColor.withValues(
-                                        alpha: 0.25,
-                                      ),
+                                      color: statusColor.withOpacity(0.25),
                                       blurRadius: 24,
                                     ),
                                   ],
@@ -2264,7 +2254,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                                   ? 'No threats found in this URL'
                                   : 'This URL has been flagged as malicious',
                               style: TextStyle(
-                                color: _textPrimary.withValues(alpha: 0.4),
+                                color: _textPrimary.withOpacity(0.4),
                                 fontSize: 12,
                                 fontWeight: FontWeight.w400,
                               ),
@@ -2277,10 +2267,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                                   vertical: 5,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: _red.withValues(alpha: 0.08),
+                                  color: _red.withOpacity(0.08),
                                   borderRadius: BorderRadius.circular(20),
                                   border: Border.all(
-                                    color: _red.withValues(alpha: 0.2),
+                                    color: _red.withOpacity(0.2),
                                   ),
                                 ),
                                 child: Row(
@@ -2289,7 +2279,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                                     Icon(
                                       Icons.warning_rounded,
                                       size: 12,
-                                      color: _red.withValues(alpha: 0.8),
+                                      color: _red.withOpacity(0.8),
                                     ),
                                     SizedBox(width: 6),
                                     Text(
@@ -2333,11 +2323,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                               size: Size(180, 120),
                               painter: _RiskArcPainter(
                                 progress: animatedProgress,
-                                trackColor: _surfaceColor.withValues(
-                                  alpha: 0.15,
-                                ),
+                                trackColor: _surfaceColor.withOpacity(0.15),
                                 fillColor: riskColor,
-                                glowColor: riskColor.withValues(alpha: 0.3),
+                                glowColor: riskColor.withOpacity(0.3),
                               ),
                             ),
                             // Score text
@@ -2359,7 +2347,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                                   Text(
                                     riskLabel,
                                     style: TextStyle(
-                                      color: riskColor.withValues(alpha: 0.7),
+                                      color: riskColor.withOpacity(0.7),
                                       fontSize: 11,
                                       fontWeight: FontWeight.w700,
                                       letterSpacing: 0.5,
@@ -2425,10 +2413,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                     width: double.infinity,
                     padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
-                      color: _bgColor.withValues(alpha: 0.4),
+                      color: _bgColor.withOpacity(0.4),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: _surfaceColor.withValues(alpha: 0.1),
+                        color: _surfaceColor.withOpacity(0.1),
                       ),
                     ),
                     child: Row(
@@ -2436,13 +2424,13 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                         Container(
                           padding: EdgeInsets.all(4),
                           decoration: BoxDecoration(
-                            color: statusColor.withValues(alpha: 0.1),
+                            color: statusColor.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Icon(
                             Icons.link_rounded,
                             size: 14,
-                            color: statusColor.withValues(alpha: 0.7),
+                            color: statusColor.withOpacity(0.7),
                           ),
                         ),
                         SizedBox(width: 10),
@@ -2450,7 +2438,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                           child: Text(
                             scan.scannedUrl,
                             style: TextStyle(
-                              color: _textPrimary.withValues(alpha: 0.45),
+                              color: _textPrimary.withOpacity(0.45),
                               fontSize: 12,
                               fontWeight: FontWeight.w500,
                             ),
@@ -2472,13 +2460,13 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                       Icon(
                         Icons.verified_outlined,
                         size: 11,
-                        color: _textPrimary.withValues(alpha: 0.2),
+                        color: _textPrimary.withOpacity(0.2),
                       ),
                       SizedBox(width: 4),
                       Text(
                         'Powered by VirusTotal',
                         style: TextStyle(
-                          color: _textPrimary.withValues(alpha: 0.2),
+                          color: _textPrimary.withOpacity(0.2),
                           fontSize: 10,
                           fontWeight: FontWeight.w500,
                         ),
@@ -2524,10 +2512,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                     width: double.infinity,
                     padding: EdgeInsets.symmetric(vertical: 16, horizontal: 20),
                     decoration: BoxDecoration(
-                      color: _primaryGreen.withValues(alpha: 0.06),
+                      color: _primaryGreen.withOpacity(0.06),
                       borderRadius: BorderRadius.circular(18),
                       border: Border.all(
-                        color: _primaryGreen.withValues(alpha: 0.2),
+                        color: _primaryGreen.withOpacity(0.2),
                       ),
                     ),
                     child: Row(
@@ -2536,7 +2524,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                         Container(
                           padding: EdgeInsets.all(4),
                           decoration: BoxDecoration(
-                            color: _primaryGreen.withValues(alpha: 0.15),
+                            color: _primaryGreen.withOpacity(0.15),
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
@@ -2585,7 +2573,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(18),
                         border: Border.all(
-                          color: _surfaceColor.withValues(alpha: 0.3),
+                          color: _surfaceColor.withOpacity(0.3),
                         ),
                       ),
                       child: Row(
@@ -2593,14 +2581,14 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                         children: [
                           Icon(
                             Icons.radar_rounded,
-                            color: _textPrimary.withValues(alpha: 0.5),
+                            color: _textPrimary.withOpacity(0.5),
                             size: 18,
                           ),
                           SizedBox(width: 10),
                           Text(
                             'Scan Another URL',
                             style: TextStyle(
-                              color: _textPrimary.withValues(alpha: 0.5),
+                              color: _textPrimary.withOpacity(0.5),
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
                             ),
@@ -2645,7 +2633,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
             ),
             boxShadow: [
               BoxShadow(
-                color: gradientColors[0].withValues(alpha: 0.25),
+                color: gradientColors[0].withOpacity(0.25),
                 blurRadius: 16,
                 offset: Offset(0, 6),
               ),
@@ -2656,7 +2644,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
               Container(
                 padding: EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.15),
+                  color: Colors.white.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: isLoading
@@ -2687,7 +2675,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                     Text(
                       subtitle,
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.6),
+                        color: Colors.white.withOpacity(0.6),
                         fontSize: 11,
                         fontWeight: FontWeight.w400,
                       ),
@@ -2697,7 +2685,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
               ),
               Icon(
                 Icons.arrow_forward_ios_rounded,
-                color: Colors.white.withValues(alpha: 0.5),
+                color: Colors.white.withOpacity(0.5),
                 size: 16,
               ),
             ],
@@ -2718,9 +2706,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
     return Container(
       padding: EdgeInsets.symmetric(vertical: 14, horizontal: 8),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.05),
+        color: color.withOpacity(0.05),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withValues(alpha: 0.12)),
+        border: Border.all(color: color.withOpacity(0.12)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -2728,7 +2716,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
           Container(
             padding: EdgeInsets.all(6),
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
+              color: color.withOpacity(0.1),
               shape: BoxShape.circle,
             ),
             child: Icon(icon, color: color, size: 16),
@@ -2746,7 +2734,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
           Text(
             label,
             style: TextStyle(
-              color: _textPrimary.withValues(alpha: 0.35),
+              color: _textPrimary.withOpacity(0.35),
               fontSize: 10,
               fontWeight: FontWeight.w600,
             ),
@@ -2831,7 +2819,7 @@ class _RiskArcPainter extends CustomPainter {
 
     // Tick marks
     final tickPaint = Paint()
-      ..color = trackColor.withValues(alpha: 0.5)
+      ..color = trackColor.withOpacity(0.5)
       ..strokeWidth = 1;
 
     for (int i = 0; i <= 10; i++) {
@@ -2881,9 +2869,9 @@ class _RadarSweepPainter extends CustomPainter {
     final paint = Paint()
       ..shader = SweepGradient(
         colors: [
-          color.withValues(alpha: 0.0),
-          color.withValues(alpha: 0.3),
-          color.withValues(alpha: 0.0),
+          color.withOpacity(0.0),
+          color.withOpacity(0.3),
+          color.withOpacity(0.0),
         ],
         stops: [0.0, 0.15, 0.3],
       ).createShader(Rect.fromCircle(center: center, radius: radius));
@@ -2906,7 +2894,7 @@ class _CyberGridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = color.withValues(alpha: 0.03)
+      ..color = color.withOpacity(0.03)
       ..strokeWidth = 1.0;
 
     // Draw vertical grid lines
@@ -2924,7 +2912,7 @@ class _CyberGridPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 3.2);
     final circlePaint = Paint()
       ..style = PaintingStyle.stroke
-      ..color = color.withValues(alpha: 0.015 + (pulse * 0.025))
+      ..color = color.withOpacity(0.015 + (pulse * 0.025))
       ..strokeWidth = 1.0;
 
     canvas.drawCircle(center, 120 + (pulse * 20), circlePaint);

@@ -105,6 +105,8 @@ class _ReporterReputationCardState extends ConsumerState<ReporterReputationCard>
     final totalVotes = (_reputation['total_votes_cast'] ?? 0) as int;
     final badgeClr = _badgeColor(badge);
 
+    final isNewUser = totalSubmitted == 0 && totalVotes == 0 && approvedReports == 0 && rejectedReports == 0;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(24),
@@ -114,7 +116,7 @@ class _ReporterReputationCardState extends ConsumerState<ReporterReputationCard>
         border: Border.all(color: border),
         boxShadow: [
           BoxShadow(
-            color: accent.withValues(alpha: 0.05),
+            color: accent.withOpacity(0.05),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -166,11 +168,13 @@ class _ReporterReputationCardState extends ConsumerState<ReporterReputationCard>
                       width: 72,
                       height: 72,
                       child: CircularProgressIndicator(
-                        value: trustScore / 100.0,
+                        value: isNewUser ? 1.0 : trustScore / 100.0,
                         strokeWidth: 6,
                         backgroundColor: border,
                         valueColor: AlwaysStoppedAnimation<Color>(
-                          trustScore >= 75 ? Colors.green : trustScore >= 50 ? Colors.orange : Colors.red,
+                          isNewUser
+                              ? border
+                              : (trustScore >= 75 ? Colors.green : trustScore >= 50 ? Colors.orange : Colors.red),
                         ),
                       ),
                     ),
@@ -178,15 +182,15 @@ class _ReporterReputationCardState extends ConsumerState<ReporterReputationCard>
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          '$trustScore',
+                          isNewUser ? '50' : '$trustScore',
                           style: TextStyle(
-                            color: textPrimary,
+                            color: isNewUser ? textSecondary : textPrimary,
                             fontSize: 20,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
                         Text(
-                          'TRUST',
+                          isNewUser ? 'BASE' : 'TRUST',
                           style: TextStyle(
                             color: textSecondary,
                             fontSize: 8,
@@ -209,9 +213,9 @@ class _ReporterReputationCardState extends ConsumerState<ReporterReputationCard>
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: badgeClr.withValues(alpha: 0.12),
+                        color: badgeClr.withOpacity(0.12),
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: badgeClr.withValues(alpha: 0.3)),
+                        border: Border.all(color: badgeClr.withOpacity(0.3)),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -231,7 +235,9 @@ class _ReporterReputationCardState extends ConsumerState<ReporterReputationCard>
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Your reputation is determined by the quality of your threat reports and community votes.',
+                      isNewUser
+                          ? 'New Member — Baseline Trust. Submit threat reports or vote to build your earned community reputation.'
+                          : 'Your reputation is determined by the quality of your threat reports and community votes.',
                       style: TextStyle(color: textSecondary, fontSize: 11, height: 1.4),
                     ),
                   ],
@@ -244,16 +250,42 @@ class _ReporterReputationCardState extends ConsumerState<ReporterReputationCard>
           const SizedBox(height: 16),
 
           // Stats Grid
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _buildStat('Reports', '$totalSubmitted', Icons.flag_outlined, accent, textPrimary, textSecondary, border),
-              _buildStat('Votes', '$totalVotes', Icons.how_to_vote_outlined, const Color(0xFF8B5CF6), textPrimary, textSecondary, border),
-              _buildStat('Approved', '$approvedReports', Icons.check_circle_outline, Colors.green, textPrimary, textSecondary, border),
-              _buildStat('Rejected', '$rejectedReports', Icons.cancel_outlined, Colors.orange, textPrimary, textSecondary, border),
-              if (falseReports > 0)
-                _buildStat('False', '$falseReports', Icons.warning_amber_rounded, Colors.red, textPrimary, textSecondary, border),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildStat('Reports', '$totalSubmitted', Icons.flag_outlined, accent, textPrimary, textSecondary, border),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildStat('Votes', '$totalVotes', Icons.how_to_vote_outlined, const Color(0xFF8B5CF6), textPrimary, textSecondary, border),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildStat('Approved', '$approvedReports', Icons.check_circle_outline, Colors.green, textPrimary, textSecondary, border),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildStat('Rejected', '$rejectedReports', Icons.cancel_outlined, Colors.orange, textPrimary, textSecondary, border),
+                  ),
+                ],
+              ),
+              if (falseReports > 0) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildStat('False', '$falseReports', Icons.warning_amber_rounded, Colors.red, textPrimary, textSecondary, border),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ],
@@ -273,12 +305,12 @@ class _ReporterReputationCardState extends ConsumerState<ReporterReputationCard>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.06),
+        color: color.withOpacity(0.06),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.15)),
+        border: Border.all(color: color.withOpacity(0.15)),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisSize: MainAxisSize.max,
         children: [
           Icon(icon, color: color, size: 16),
           const SizedBox(width: 8),

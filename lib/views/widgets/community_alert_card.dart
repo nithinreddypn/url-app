@@ -29,7 +29,7 @@ class CommunityAlertCard extends StatelessWidget {
     // Determine theme color based on threat level
     final isCritical = type == 'community_verified' || type == 'threat_alert';
     final accentColor = isCritical ? const Color(0xFFEF4444) : const Color(0xFF3B82F6);
-    final bgFill = accentColor.withValues(alpha: 0.05);
+    final bgFill = accentColor.withOpacity(0.05);
 
     return Dismissible(
       key: Key('alert-dismiss-$id'),
@@ -42,7 +42,7 @@ class CommunityAlertCard extends StatelessWidget {
         padding: const EdgeInsets.only(right: 24),
         alignment: Alignment.centerRight,
         decoration: BoxDecoration(
-          color: Colors.red.withValues(alpha: 0.8),
+          color: Colors.red.withOpacity(0.8),
           borderRadius: BorderRadius.circular(20),
         ),
         child: const Row(
@@ -61,7 +61,7 @@ class CommunityAlertCard extends StatelessWidget {
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: accentColor.withValues(alpha: 0.3), width: 1.5),
+          side: BorderSide(color: accentColor.withOpacity(0.3), width: 1.5),
         ),
         color: cardBg,
         elevation: 0,
@@ -77,7 +77,7 @@ class CommunityAlertCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: accentColor.withValues(alpha: 0.1),
+                    color: accentColor.withOpacity(0.1),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
@@ -109,7 +109,7 @@ class CommunityAlertCard extends StatelessWidget {
                           Text(
                             time,
                             style: TextStyle(
-                              color: textSecondary.withValues(alpha: 0.6),
+                              color: textSecondary.withOpacity(0.6),
                               fontSize: 10,
                             ),
                           ),
@@ -128,7 +128,7 @@ class CommunityAlertCard extends StatelessWidget {
                       Text(
                         'Swipe left to acknowledge',
                         style: TextStyle(
-                          color: textSecondary.withValues(alpha: 0.4),
+                          color: textSecondary.withOpacity(0.4),
                           fontSize: 9,
                           fontStyle: FontStyle.italic,
                         ),

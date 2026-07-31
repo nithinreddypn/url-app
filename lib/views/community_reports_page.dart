@@ -301,7 +301,7 @@ class _CommunityReportsPageState extends ConsumerState<CommunityReportsPage> {
                       scrollDirection: Axis.horizontal,
                       child: SegmentedButton<int>(
                         style: SegmentedButton.styleFrom(
-                          selectedBackgroundColor: activeGreen.withValues(alpha: 0.15),
+                          selectedBackgroundColor: activeGreen.withOpacity(0.15),
                           selectedForegroundColor: activeGreen,
                           side: BorderSide(color: context.border),
                         ),
@@ -487,7 +487,7 @@ class _CommunityReportsPageState extends ConsumerState<CommunityReportsPage> {
           // Shield Custom Painter for empty states
           CustomPaint(
             size: const Size(60, 60),
-            painter: ShieldEmptyStatePainter(color: Colors.grey.withValues(alpha: 0.5)),
+            painter: ShieldEmptyStatePainter(color: Colors.grey.withOpacity(0.5)),
           ),
           const SizedBox(height: 18),
           Text(

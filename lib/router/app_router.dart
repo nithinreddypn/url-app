@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/app_providers.dart';
+import '../pages/app/scan/scan_page.dart';
 import '../views/auth/auth_gate.dart';
 import '../views/auth/login_screen.dart';
 import '../views/auth/signup_screen.dart';
@@ -57,7 +58,8 @@ final appRouter = GoRouter(
           state.matchedLocation == '/auth_gate' ||
           state.matchedLocation == '/verify-email' ||
           state.matchedLocation == '/reset-password' ||
-          state.matchedLocation == '/reset_password';
+          state.matchedLocation == '/reset_password' ||
+          state.matchedLocation == '/scan';
       return isLoggingIn ? null : '/auth_gate';
     }
   },
@@ -86,15 +88,13 @@ final appRouter = GoRouter(
       path: '/dashboard',
       builder: (context, state) => const MainScreen(),
     ),
+    GoRoute(path: '/scan', builder: (context, state) => const ScanPage()),
 
     GoRoute(
       path: '/blocked_list',
       builder: (context, state) => const BlockedUrlsScreen(),
     ),
-    GoRoute(
-      path: '/profile',
-      builder: (context, state) => const ProfilePage(),
-    ),
+    GoRoute(path: '/profile', builder: (context, state) => const ProfilePage()),
     GoRoute(
       path: '/scan-detail/:id',
       builder: (context, state) {

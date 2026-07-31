@@ -35,7 +35,7 @@ class CommunityProtectionCard extends StatelessWidget {
             gradient: LinearGradient(
               colors: [
                 accentGreen,
-                accentGreen.withValues(alpha: 0.8),
+                accentGreen.withOpacity(0.8),
               ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
@@ -50,7 +50,7 @@ class CommunityProtectionCard extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
+                      color: Colors.white.withOpacity(0.2),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(

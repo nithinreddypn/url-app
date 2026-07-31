@@ -142,7 +142,7 @@ class _ReportUrlFormState extends ConsumerState<ReportUrlForm> {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.red.withValues(alpha: 0.15),
+              color: Colors.red.withOpacity(0.15),
               shape: BoxShape.circle,
             ),
             child: const Icon(
@@ -179,7 +179,7 @@ class _ReportUrlFormState extends ConsumerState<ReportUrlForm> {
                 style: TextStyle(color: textPrimary, fontSize: 13, fontFamily: 'monospace'),
                 decoration: InputDecoration(
                   filled: true,
-                  fillColor: surfaceColor.withValues(alpha: 0.1),
+                  fillColor: surfaceColor.withOpacity(0.1),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
@@ -243,7 +243,7 @@ class _ReportUrlFormState extends ConsumerState<ReportUrlForm> {
                 maxLines: 4,
                 decoration: InputDecoration(
                   hintText: 'Describe the threat (e.g. spoofed login page, fake support number, etc.)',
-                  hintStyle: TextStyle(color: textSecondary.withValues(alpha: 0.5)),
+                  hintStyle: TextStyle(color: textSecondary.withOpacity(0.5)),
                   enabledBorder: OutlineInputBorder(
                     borderSide: BorderSide(color: surfaceColor),
                     borderRadius: BorderRadius.circular(10),
@@ -317,7 +317,7 @@ class _ReportUrlFormState extends ConsumerState<ReportUrlForm> {
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: [
                     BoxShadow(
-                      color: context.activeAccent.withValues(alpha: 0.3),
+                      color: context.activeAccent.withOpacity(0.3),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -329,7 +329,7 @@ class _ReportUrlFormState extends ConsumerState<ReportUrlForm> {
                     backgroundColor: Colors.transparent,
                     shadowColor: Colors.transparent,
                     disabledBackgroundColor: Colors.transparent,
-                    disabledForegroundColor: textPrimary.withValues(alpha: 0.3),
+                    disabledForegroundColor: textPrimary.withOpacity(0.3),
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),

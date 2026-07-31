@@ -19,7 +19,7 @@ $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 if ($origin !== '' && allowedOrigin($origin)) {
     header('Access-Control-Allow-Origin: ' . $origin);
     header('Access-Control-Allow-Credentials: true');
-    header('Access-Control-Allow-Headers: Authorization, Content-Type, Accept, X-Requested-With');
+    header('Access-Control-Allow-Headers: Authorization, Content-Type, Accept, X-Requested-With, X-Google-Id-Token');
     header('Access-Control-Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS');
     header('Access-Control-Max-Age: 86400');
 } elseif ($origin !== '') {

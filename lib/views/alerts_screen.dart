@@ -437,11 +437,11 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                 shape: BoxShape.circle,
                 gradient: LinearGradient(
                   colors: [
-                    _red.withValues(alpha: 0.15),
-                    _amber.withValues(alpha: 0.05),
+                    _red.withOpacity(0.15),
+                    _amber.withOpacity(0.05),
                   ],
                 ),
-                border: Border.all(color: _red.withValues(alpha: 0.3)),
+                border: Border.all(color: _red.withOpacity(0.3)),
               ),
               child: Icon(Icons.error_outline_rounded, size: 48, color: _red),
             ),
@@ -484,7 +484,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                 foregroundColor: Colors.white,
                 elevation: 0,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(20),
                 ),
                 padding: const EdgeInsets.symmetric(
                   horizontal: 24,
@@ -514,12 +514,12 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  _red.withValues(alpha: 0.2),
-                  _amber.withValues(alpha: 0.1),
+                  _red.withOpacity(0.2),
+                  _amber.withOpacity(0.1),
                 ],
               ),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: _red.withValues(alpha: 0.3)),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: _red.withOpacity(0.3)),
             ),
             child: Icon(
               Icons.shield_rounded,
@@ -547,7 +547,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: _textPrimary.withValues(alpha: 0.45),
+                    color: _textPrimary.withOpacity(0.45),
                     fontSize: 13,
                     fontWeight: FontWeight.w400,
                   ),
@@ -559,9 +559,9 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
           Container(
             padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
-              color: _surfaceColor.withValues(alpha: 0.6),
+              color: _surfaceColor.withOpacity(0.6),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: _primaryGreen.withValues(alpha: 0.3)),
+              border: Border.all(color: _primaryGreen.withOpacity(0.3)),
             ),
             child: Text(
               '${_filteredScans.length}',
@@ -616,13 +616,13 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
               padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
                 color: isSelected
-                    ? chipColor.withValues(alpha: 0.2)
+                    ? chipColor.withOpacity(0.2)
                     : _cardColor,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
                   color: isSelected
                       ? chipColor
-                      : _surfaceColor.withValues(alpha: 0.6),
+                      : _surfaceColor.withOpacity(0.6),
                   width: isSelected ? 1.5 : 1,
                 ),
               ),
@@ -638,7 +638,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: chipColor.withValues(alpha: 0.6),
+                            color: chipColor.withOpacity(0.6),
                             blurRadius: 6,
                           ),
                         ],
@@ -661,8 +661,8 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                     padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
                       color: isSelected
-                          ? chipColor.withValues(alpha: 0.25)
-                          : _surfaceColor.withValues(alpha: 0.4),
+                          ? chipColor.withOpacity(0.25)
+                          : _surfaceColor.withOpacity(0.4),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(
@@ -694,7 +694,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
             child: CircularProgressIndicator(
               color: _primaryGreen,
               strokeWidth: 3,
-              backgroundColor: _primaryGreen.withValues(alpha: 0.15),
+              backgroundColor: _primaryGreen.withOpacity(0.15),
             ),
           ),
           SizedBox(height: 20),
@@ -722,18 +722,18 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
               shape: BoxShape.circle,
               gradient: LinearGradient(
                 colors: [
-                  _primaryGreen.withValues(alpha: 0.1),
-                  _amber.withValues(alpha: 0.05),
+                  _primaryGreen.withOpacity(0.1),
+                  _amber.withOpacity(0.05),
                 ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-              border: Border.all(color: _primaryGreen.withValues(alpha: 0.2)),
+              border: Border.all(color: _primaryGreen.withOpacity(0.2)),
             ),
             child: Icon(
               Icons.verified_user_rounded,
               size: 52,
-              color: _primaryGreen.withValues(alpha: 0.5),
+              color: _primaryGreen.withOpacity(0.5),
             ),
           ),
           SizedBox(height: 24),
@@ -754,7 +754,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                 : 'No scanned URLs match this severity level',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: _textPrimary.withValues(alpha: 0.35),
+              color: _textPrimary.withOpacity(0.35),
               fontSize: 14,
               height: 1.5,
             ),
@@ -791,10 +791,10 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
       decoration: BoxDecoration(
-        color: _cardColor.withValues(alpha: 0.3),
-        borderRadius: BorderRadius.circular(16),
+        color: _cardColor.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: _surfaceColor.withValues(alpha: 0.3),
+          color: _surfaceColor.withOpacity(0.3),
           width: 1,
         ),
       ),
@@ -872,8 +872,8 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
         padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
           color: _cardColor,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: _surfaceColor.withValues(alpha: 0.8)),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: _surfaceColor.withOpacity(0.8)),
         ),
         child: Row(
           children: [
@@ -884,9 +884,9 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                   duration: const Duration(milliseconds: 200),
                   decoration: BoxDecoration(
                     color: selectedTab == 0
-                        ? _primaryGreen.withValues(alpha: 0.15)
+                        ? _primaryGreen.withOpacity(0.15)
                         : Colors.transparent,
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(18),
                   ),
                   alignment: Alignment.center,
                   child: Row(
@@ -924,9 +924,9 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                   duration: const Duration(milliseconds: 200),
                   decoration: BoxDecoration(
                     color: selectedTab == 1
-                        ? _primaryGreen.withValues(alpha: 0.15)
+                        ? _primaryGreen.withOpacity(0.15)
                         : Colors.transparent,
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(18),
                   ),
                   alignment: Alignment.center,
                   child: Row(
@@ -988,7 +988,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                       child: Text(
                         "That's your most recent activity",
                         style: TextStyle(
-                          color: _textMuted.withValues(alpha: 0.5),
+                          color: _textMuted.withOpacity(0.5),
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
                         ),
@@ -1014,10 +1014,10 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
       padding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
       child: Container(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.15),
+              color: Colors.black.withOpacity(0.15),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -1029,14 +1029,14 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
           decoration: InputDecoration(
             hintText: 'Search scans by URL or status...',
             hintStyle: TextStyle(
-              color: _textPrimary.withValues(alpha: 0.3),
+              color: _textPrimary.withOpacity(0.3),
               fontSize: 13,
             ),
             prefixIcon: Padding(
               padding: const EdgeInsets.only(left: 14, right: 10),
               child: Icon(
                 Icons.search_rounded,
-                color: _textPrimary.withValues(alpha: 0.4),
+                color: _textPrimary.withOpacity(0.4),
                 size: 20,
               ),
             ),
@@ -1044,7 +1044,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                 ? IconButton(
                     icon: Icon(
                       Icons.close_rounded,
-                      color: _textPrimary.withValues(alpha: 0.4),
+                      color: _textPrimary.withOpacity(0.4),
                       size: 18,
                     ),
                     onPressed: () {
@@ -1059,19 +1059,19 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
               vertical: 14,
             ),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(24),
               borderSide: BorderSide(
-                color: _textPrimary.withValues(alpha: 0.08),
+                color: _textPrimary.withOpacity(0.08),
               ),
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(24),
               borderSide: BorderSide(
-                color: _textPrimary.withValues(alpha: 0.08),
+                color: _textPrimary.withOpacity(0.08),
               ),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(24),
               borderSide: BorderSide(color: _primaryGreen, width: 1.5),
             ),
           ),
@@ -1099,20 +1099,20 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                         shape: BoxShape.circle,
                         gradient: LinearGradient(
                           colors: [
-                            _primaryGreen.withValues(alpha: 0.1),
-                            _amber.withValues(alpha: 0.05),
+                            _primaryGreen.withOpacity(0.1),
+                            _amber.withOpacity(0.05),
                           ],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
                         border: Border.all(
-                          color: _primaryGreen.withValues(alpha: 0.2),
+                          color: _primaryGreen.withOpacity(0.2),
                         ),
                       ),
                       child: Icon(
                         Icons.history_rounded,
                         size: 52,
-                        color: _primaryGreen.withValues(alpha: 0.5),
+                        color: _primaryGreen.withOpacity(0.5),
                       ),
                     ),
                     const SizedBox(height: 24),
@@ -1133,7 +1133,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                           : 'Try checking your spelling or search terms.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        color: _textPrimary.withValues(alpha: 0.35),
+                        color: _textPrimary.withOpacity(0.35),
                         fontSize: 14,
                         height: 1.5,
                       ),
@@ -1167,15 +1167,13 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     
     final resultColor = isGlobal
         ? _red
-        : isPending
-            ? (isTimeout ? Colors.orange : Colors.grey)
-            : isError
-                ? Colors.grey
-                : scan.isSafe
-                    ? _primaryGreen
-                    : isSuspicious
-                        ? _amber
-                        : _red;
+        : (isPending || isError)
+            ? Colors.grey
+            : scan.isSafe
+                ? _primaryGreen
+                : isSuspicious
+                    ? _amber
+                    : _red;
                         
     final resultLabel = isGlobal
         ? 'BLOCKED'
@@ -1189,12 +1187,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                         ? 'SUSPICIOUS'
                         : 'DANGER';
 
-    final tapAction = isTimeout 
-        ? () {
-            ref.read(tabIndexProvider.notifier).state = 1;
-            ref.read(deepLinkUrlProvider.notifier).state = scan.scannedUrl;
-          }
-        : () => context.push('/scan-detail/${scan.scanId}');
+    final tapAction = () => context.push('/scan-detail/${scan.scanId}');
 
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.0, end: 1.0),
@@ -1208,7 +1201,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
             child: Material(
               color: Colors.transparent,
               child: InkWell(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(20),
                 onTap: tapAction,
                 child: child,
               ),
@@ -1219,31 +1212,27 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
       child: Container(
         margin: const EdgeInsets.only(bottom: 14),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.15),
+              color: Colors.black.withOpacity(0.15),
               blurRadius: 10,
               offset: const Offset(0, 3),
             ),
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(20),
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
             child: Container(
               decoration: BoxDecoration(
-                color: _cardColor.withValues(
-                  alpha: 0.8,
-                ), // Glassmorphic translucent bg
-                borderRadius: BorderRadius.circular(16),
+                color: _cardColor.withOpacity(0.8), // Glassmorphic translucent bg
+                borderRadius: BorderRadius.circular(20),
                 border: Border.all(
                   color: isGlobal
-                      ? _primaryGreen.withValues(
-                          alpha: 0.25,
-                        ) // Forest Green border
-                      : sevColor.withValues(alpha: 0.15),
+                      ? _primaryGreen.withOpacity(0.25) // Forest Green border
+                      : sevColor.withOpacity(0.15),
                   width: 1.2,
                 ),
               ),
@@ -1256,8 +1245,8 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                       decoration: BoxDecoration(
                         color: isGlobal ? _primaryGreen : sevColor,
                         borderRadius: const BorderRadius.only(
-                          topLeft: Radius.circular(16),
-                          bottomLeft: Radius.circular(16),
+                          topLeft: Radius.circular(20),
+                          bottomLeft: Radius.circular(20),
                         ),
                       ),
                     ),
@@ -1279,12 +1268,12 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                                   ),
                                   decoration: BoxDecoration(
                                     color: (isGlobal ? _primaryGreen : sevColor)
-                                        .withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(6),
+                                        .withOpacity(0.15),
+                                    borderRadius: BorderRadius.circular(12),
                                     border: Border.all(
                                       color:
                                           (isGlobal ? _primaryGreen : sevColor)
-                                              .withValues(alpha: 0.4),
+                                              .withOpacity(0.4),
                                     ),
                                   ),
                                   child: Text(
@@ -1309,8 +1298,8 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                                     vertical: 3,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: resultColor.withValues(alpha: 0.12),
-                                    borderRadius: BorderRadius.circular(6),
+                                    color: resultColor.withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Text(
                                     resultLabel,
@@ -1327,7 +1316,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                                 Text(
                                   isTimeout ? 'Tap to retry' : _timeAgo(scan.scannedAt),
                                   style: TextStyle(
-                                    color: isTimeout ? Colors.orange : _textPrimary.withValues(alpha: 0.3),
+                                    color: isTimeout ? Colors.orange : _textPrimary.withOpacity(0.3),
                                     fontSize: 10,
                                     fontWeight: isTimeout ? FontWeight.bold : FontWeight.w500,
                                   ),
@@ -1425,8 +1414,8 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                                     vertical: 4,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: sevColor.withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(6),
+                                    color: sevColor.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Text(
                                     '$score',
@@ -1441,12 +1430,10 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                                 // Risk progress bar
                                 Expanded(
                                   child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(3),
+                                    borderRadius: BorderRadius.circular(6),
                                     child: LinearProgressIndicator(
                                       value: score / 100,
-                                      backgroundColor: _surfaceColor.withValues(
-                                        alpha: 0.25,
-                                      ),
+                                      backgroundColor: _surfaceColor.withOpacity(0.25),
                                       valueColor: AlwaysStoppedAnimation<Color>(
                                         sevColor,
                                       ),
@@ -1460,13 +1447,13 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                                   Icon(
                                     Icons.flag_rounded,
                                     size: 11,
-                                    color: _red.withValues(alpha: 0.6),
+                                    color: _red.withOpacity(0.6),
                                   ),
                                   const SizedBox(width: 2),
                                   Text(
                                     '${scan.virusTotalFlags}',
                                     style: TextStyle(
-                                      color: _red.withValues(alpha: 0.6),
+                                      color: _red.withOpacity(0.6),
                                       fontSize: 10,
                                       fontWeight: FontWeight.w700,
                                     ),
@@ -1478,13 +1465,13 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
                                   Icon(
                                     Icons.psychology_rounded,
                                     size: 11,
-                                    color: _amber.withValues(alpha: 0.6),
+                                    color: _amber.withOpacity(0.6),
                                   ),
                                   const SizedBox(width: 2),
                                   Text(
                                     '${scan.heuristicHits}',
                                     style: TextStyle(
-                                      color: _amber.withValues(alpha: 0.6),
+                                      color: _amber.withOpacity(0.6),
                                       fontSize: 10,
                                       fontWeight: FontWeight.w700,
                                     ),

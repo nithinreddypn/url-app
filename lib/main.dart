@@ -7,11 +7,17 @@ import 'router/app_router.dart';
 import 'providers/app_providers.dart';
 import 'services/error_handler.dart';
 import 'services/deep_link_service.dart';
+import 'services/api_client.dart';
 
 void main() {
   runZonedGuarded(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
+      unawaited(ApiClient.initUserAgent().catchError((e) {
+        if (kDebugMode) {
+          debugPrint('Failed to initialize user agent: $e');
+        }
+      }));
 
       // Catch and suppress the Flutter Web keyboard assertion error globally
       FlutterError.onError = (details) {
@@ -20,7 +26,9 @@ void main() {
         )) {
           return;
         }
-        if (kDebugMode) FlutterError.presentError(details);
+        // Do not swallow framework errors in release builds. Doing so turns
+        // a failed widget into an unexplained blank area on screen.
+        FlutterError.presentError(details);
       };
 
       PlatformDispatcher.instance.onError = (error, stack) {

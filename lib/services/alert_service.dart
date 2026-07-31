@@ -428,9 +428,7 @@ class _ToastOverlayState extends State<_ToastOverlay>
                                 border: Border.all(color: visuals.border),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black.withValues(
-                                      alpha: isDark ? 0.4 : 0.14,
-                                    ),
+                                    color: Colors.black.withOpacity(isDark ? 0.4 : 0.14),
                                     blurRadius: isCompact ? 20 : 32,
                                     offset: const Offset(0, 12),
                                   ),
@@ -438,9 +436,7 @@ class _ToastOverlayState extends State<_ToastOverlay>
                                   if (widget.type == AlertType.error ||
                                       widget.type == AlertType.warning)
                                     BoxShadow(
-                                      color: visuals.accent.withValues(
-                                        alpha: isDark ? 0.08 : 0.05,
-                                      ),
+                                      color: visuals.accent.withOpacity(isDark ? 0.08 : 0.05),
                                       blurRadius: 24,
                                       offset: const Offset(0, 4),
                                     ),
@@ -549,11 +545,9 @@ class _ToastOverlayState extends State<_ToastOverlay>
                                                       ),
                                                       backgroundColor: visuals
                                                           .accent
-                                                          .withValues(
-                                                            alpha: isDark
+                                                          .withOpacity(isDark
                                                                 ? 0.12
-                                                                : 0.08,
-                                                          ),
+                                                                : 0.08,),
                                                     ),
                                                     child: Text(
                                                       widget.actionLabel!,
@@ -591,9 +585,7 @@ class _ToastOverlayState extends State<_ToastOverlay>
                                           child: Container(
                                             height: 3,
                                             decoration: BoxDecoration(
-                                              color: visuals.accent.withValues(
-                                                alpha: _isHovered ? 0.4 : 0.7,
-                                              ),
+                                              color: visuals.accent.withOpacity(_isHovered ? 0.4 : 0.7),
                                               borderRadius:
                                                   BorderRadius.circular(1.5),
                                             ),
@@ -692,8 +684,8 @@ class _ToastOverlayState extends State<_ToastOverlay>
             decoration: BoxDecoration(
               color: _closeHovered
                   ? (isDark
-                        ? Colors.white.withValues(alpha: 0.08)
-                        : Colors.black.withValues(alpha: 0.06))
+                        ? Colors.white.withOpacity(0.08)
+                        : Colors.black.withOpacity(0.06))
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(8),
             ),
@@ -794,11 +786,11 @@ class _ToastVisuals {
     };
 
     // Icon badge background: fully saturated but low alpha
-    final iconBg = accent.withValues(alpha: isDark ? 0.15 : 0.10);
+    final iconBg = accent.withOpacity(isDark ? 0.15 : 0.10);
 
     // Borders — exact user token spec
     final border = isDark
-        ? Colors.white.withValues(alpha: 0.06)   // --border dark
+        ? Colors.white.withOpacity(0.06)   // --border dark
         : const Color(0xFFE2E8F0);               // --border light
 
     // Text — exact user token spec

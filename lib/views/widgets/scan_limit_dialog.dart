@@ -23,7 +23,7 @@ class ScanLimitDialog extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: errorRed.withValues(alpha: 0.15),
+              color: errorRed.withOpacity(0.15),
               shape: BoxShape.circle,
             ),
             child: Icon(
@@ -71,7 +71,7 @@ class ScanLimitDialog extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: [
                     BoxShadow(
-                      color: context.activeAccent.withValues(alpha: 0.3),
+                      color: context.activeAccent.withOpacity(0.3),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),

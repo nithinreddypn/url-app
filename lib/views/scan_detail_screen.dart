@@ -132,21 +132,24 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
     if (isSafe) {
       _launchExternalUrl(_scan!.scannedUrl);
     } else {
-      // Show confirmation dialog for dangerous/suspicious scans
+      final isPending = _scan!.scanResult?.toLowerCase() == 'pending';
+      final isError = _scan!.scanResult?.toLowerCase() == 'error';
+
+      // Show confirmation dialog for dangerous/suspicious/pending scans
       final proceed = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
           backgroundColor: _cardColor,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
-            side: BorderSide(color: _red, width: 1.5),
+            side: BorderSide(color: isPending || isError ? Colors.grey : _red, width: 1.5),
           ),
           title: Row(
             children: [
-              Icon(Icons.warning_amber_rounded, color: _red, size: 28),
+              Icon(Icons.warning_amber_rounded, color: isPending || isError ? Colors.grey : _red, size: 28),
               const SizedBox(width: 12),
               Text(
-                'Security Warning',
+                isPending ? 'Scan In Progress' : isError ? 'Scan Error' : 'Security Warning',
                 style: TextStyle(
                   color: _textPrimary,
                   fontWeight: FontWeight.bold,
@@ -155,7 +158,11 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
             ],
           ),
           content: Text(
-            'This site was flagged as DANGEROUS (${_scan!.threatType ?? "malicious"}). Continuing may expose your device to security threats. Are you sure you want to proceed?',
+            isPending
+                ? 'This site is still being analyzed. Continuing may expose your device to security threats. Are you sure you want to proceed?'
+                : isError
+                    ? 'The scan analysis encountered an error. Proceed with caution. Are you sure you want to proceed?'
+                    : 'This site was flagged as DANGEROUS (${_scan!.threatType ?? "malicious"}). Continuing may expose your device to security threats. Are you sure you want to proceed?',
             style: const TextStyle(
               color: Color(0xFF8E8E93),
               fontSize: 14,
@@ -176,7 +183,7 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
             ElevatedButton(
               onPressed: () => Navigator.pop(ctx, true),
               style: ElevatedButton.styleFrom(
-                backgroundColor: _red,
+                backgroundColor: isPending || isError ? Colors.grey : _red,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -538,11 +545,22 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
     final riskScore = scan.riskScore ?? 0;
     final hashVal = _deterministicHash(scan.scannedUrl + scan.scanId);
 
+    final isPending = scan.scanResult?.toLowerCase() == 'pending';
+    final isError = scan.scanResult?.toLowerCase() == 'error';
+
     // Color theme logic
     Color statusColor;
     String statusLabel;
     IconData statusIcon;
-    if (riskScore < 30) {
+    if (isPending) {
+      statusColor = Colors.grey;
+      statusLabel = 'PENDING';
+      statusIcon = Icons.hourglass_empty_rounded;
+    } else if (isError) {
+      statusColor = Colors.grey;
+      statusLabel = 'ERROR';
+      statusIcon = Icons.error_outline_rounded;
+    } else if (riskScore < 30) {
       statusColor = _primaryGreen;
       statusLabel = 'SAFE';
       statusIcon = Icons.check_circle_outline_rounded;
@@ -841,6 +859,8 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
     IconData statusIcon,
     int riskScore,
   ) {
+    final isPending = scan.scanResult?.toLowerCase() == 'pending';
+    final isError = scan.scanResult?.toLowerCase() == 'error';
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -849,7 +869,7 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
         border: Border.all(color: _surfaceColor),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
+            color: Colors.black.withOpacity(0.1),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -868,7 +888,7 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
                   children: [
                     CircularProgressIndicator(
                       value: riskScore / 100.0,
-                      backgroundColor: _surfaceColor.withValues(alpha: 0.3),
+                      backgroundColor: _surfaceColor.withOpacity(0.3),
                       valueColor: AlwaysStoppedAnimation<Color>(statusColor),
                       strokeWidth: 5.5,
                     ),
@@ -906,9 +926,13 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      scan.threatType != null
-                          ? '${scan.threatType!.toUpperCase()} THREAT DETECTED'
-                          : 'NO ACTIVE SECURITY THREATS FOUND',
+                      isPending
+                          ? 'SCAN IS STILL IN PROGRESS'
+                          : isError
+                              ? 'SCAN ENCOUNTERED AN ERROR'
+                              : scan.threatType != null
+                                  ? '${scan.threatType!.toUpperCase()} THREAT DETECTED'
+                                  : 'NO ACTIVE SECURITY THREATS FOUND',
                       style: TextStyle(
                         color: _textSecondary,
                         fontSize: 11,
@@ -927,7 +951,7 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
             decoration: BoxDecoration(
               color: _bgColor,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _surfaceColor.withValues(alpha: 0.5)),
+              border: Border.all(color: _surfaceColor.withOpacity(0.5)),
             ),
             child: Row(
               children: [
@@ -999,9 +1023,9 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: statusColor.withValues(alpha: 0.08),
+        color: statusColor.withOpacity(0.08),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: statusColor.withValues(alpha: 0.2)),
+        border: Border.all(color: statusColor.withOpacity(0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1040,7 +1064,7 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
                     child: Text(
                       reason,
                       style: TextStyle(
-                        color: _textPrimary.withValues(alpha: 0.8),
+                        color: _textPrimary.withOpacity(0.8),
                         fontSize: 13,
                         height: 1.4,
                         fontWeight: FontWeight.w500,
@@ -1124,10 +1148,10 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: _red.withValues(alpha: 0.1),
+                            color: _red.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
-                              color: _red.withValues(alpha: 0.3),
+                              color: _red.withOpacity(0.3),
                             ),
                           ),
                           child: Row(
@@ -1185,7 +1209,7 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
                         ),
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          color: _surfaceColor.withValues(alpha: 0.3),
+                          color: _surfaceColor.withOpacity(0.3),
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(color: _surfaceColor),
                         ),
@@ -1297,7 +1321,7 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
               Container(
                 width: 1.5,
                 height: 24,
-                color: _primaryGreen.withValues(alpha: 0.3),
+                color: _primaryGreen.withOpacity(0.3),
               ),
           ],
         ),
@@ -1434,7 +1458,7 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
           child: Text(
             val,
             style: TextStyle(
-              color: _textPrimary.withValues(alpha: 0.8),
+              color: _textPrimary.withOpacity(0.8),
               fontSize: 11,
               fontFamily: 'monospace',
               height: 1.4,
@@ -1448,8 +1472,13 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
   Widget? _buildFloatingActionButton() {
     if (_scan == null) return null;
     final riskScore = _scan!.riskScore ?? 0;
+    final isPending = _scan!.scanResult?.toLowerCase() == 'pending';
+    final isError = _scan!.scanResult?.toLowerCase() == 'error';
+
     Color statusColor;
-    if (riskScore < 30) {
+    if (isPending || isError) {
+      statusColor = Colors.grey;
+    } else if (riskScore < 30) {
       statusColor = _primaryGreen;
     } else if (riskScore < 60) {
       statusColor = _amber;
@@ -1504,11 +1533,11 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
       decoration: BoxDecoration(
         color: _cardColor,
         borderRadius: BorderRadius.circular(radius),
-        border: Border.all(color: _surfaceColor.withValues(alpha: 0.5)),
+        border: Border.all(color: _surfaceColor.withOpacity(0.5)),
       ),
       child: Center(
         child: CircularProgressIndicator(
-          color: _primaryGreen.withValues(alpha: 0.3),
+          color: _primaryGreen.withOpacity(0.3),
         ),
       ),
     );
@@ -1524,7 +1553,7 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: _red.withValues(alpha: 0.1),
+                color: _red.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(Icons.error_outline_rounded, size: 52, color: _red),

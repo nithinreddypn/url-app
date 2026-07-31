@@ -31,6 +31,14 @@ final scanLimitServiceProvider = Provider((ref) {
   return ScanLimitService();
 });
 
+final urlScanServiceProvider = Provider<UrlScanService>((ref) {
+  final service = UrlScanService();
+  ref.onDispose(() {
+    service.dispose();
+  });
+  return service;
+});
+
 // State Providers
 
 /// Exposes the current authenticated user's model and profiles metadata.
@@ -439,7 +447,7 @@ final recentScansProvider = FutureProvider<List<UrlScanModel>>((ref) async {
   final user = ref.watch(userProvider);
   if (user == null) return [];
   final scanService = UrlScanService();
-  return await scanService.getRecentScans(userId: user.userId, limit: 10);
+  return await scanService.getRecentScans(userId: user.userId, limit: 5);
 });
 
 final dangerousScansProvider = FutureProvider<List<UrlScanModel>>((ref) async {

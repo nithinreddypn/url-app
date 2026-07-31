@@ -456,7 +456,7 @@ class _CommunityReportDetailPageState extends ConsumerState<CommunityReportDetai
                   const SizedBox(height: 8),
                   Text(
                     'Submitted by: Community Contributor',
-                    style: TextStyle(color: textSecondary.withValues(alpha: 0.6), fontSize: 11, fontStyle: FontStyle.italic),
+                    style: TextStyle(color: textSecondary.withOpacity(0.6), fontSize: 11, fontStyle: FontStyle.italic),
                   ),
                 ],
               ),
@@ -493,7 +493,7 @@ class _CommunityReportDetailPageState extends ConsumerState<CommunityReportDetai
                           label: const Text('Confirm Dangerous', style: TextStyle(color: Colors.red)),
                           style: OutlinedButton.styleFrom(
                             side: BorderSide(color: userVote == 'confirm_threat' ? Colors.red : border),
-                            backgroundColor: userVote == 'confirm_threat' ? Colors.red.withValues(alpha: 0.05) : Colors.transparent,
+                            backgroundColor: userVote == 'confirm_threat' ? Colors.red.withOpacity(0.05) : Colors.transparent,
                           ),
                         ),
                       ),
@@ -505,7 +505,7 @@ class _CommunityReportDetailPageState extends ConsumerState<CommunityReportDetai
                           label: const Text('Looks Safe', style: TextStyle(color: Colors.green)),
                           style: OutlinedButton.styleFrom(
                             side: BorderSide(color: userVote == 'looks_safe' ? Colors.green : border),
-                            backgroundColor: userVote == 'looks_safe' ? Colors.green.withValues(alpha: 0.05) : Colors.transparent,
+                            backgroundColor: userVote == 'looks_safe' ? Colors.green.withOpacity(0.05) : Colors.transparent,
                           ),
                         ),
                       ),
@@ -558,19 +558,19 @@ class _CommunityReportDetailPageState extends ConsumerState<CommunityReportDetai
     final s = status.toLowerCase();
     if (s == 'approved' || s == 'verified' || s == 'high_risk') {
       cardBorder = const Color(0xFFEF4444);
-      bgFill = const Color(0xFFEF4444).withValues(alpha: 0.05);
+      bgFill = const Color(0xFFEF4444).withOpacity(0.05);
       recTitle = '🔴 CRITICAL SAFETY ALERT';
       recMessage = 'Avoid visiting this website. Do not enter login details, reveal passwords, or download any attachments. This page is confirmed malicious.';
       icon = Icons.gpp_bad;
     } else if (s == 'pending' || s == 'queued' || s == 'needs_review' || s == 'duplicate' || s == 'verification') {
       cardBorder = const Color(0xFFEAB308);
-      bgFill = const Color(0xFFEAB308).withValues(alpha: 0.05);
+      bgFill = const Color(0xFFEAB308).withOpacity(0.05);
       recTitle = '🟡 SAFETY ADVISORY';
       recMessage = 'This URL is currently under active investigation. Refrain from entering any credentials or personal info until review is complete.';
       icon = Icons.warning_amber;
     } else {
       cardBorder = const Color(0xFF22C55E);
-      bgFill = const Color(0xFF22C55E).withValues(alpha: 0.05);
+      bgFill = const Color(0xFF22C55E).withOpacity(0.05);
       recTitle = '🟢 SAFE SITE VERIFIED';
       recMessage = 'Automated engines and analyst review did not find any security threats. It appears safe to browse.';
       icon = Icons.verified;
@@ -581,7 +581,7 @@ class _CommunityReportDetailPageState extends ConsumerState<CommunityReportDetai
       decoration: BoxDecoration(
         color: bgFill,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: cardBorder.withValues(alpha: 0.3), width: 1.5),
+        border: Border.all(color: cardBorder.withOpacity(0.3), width: 1.5),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,

@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../config/api_environment.dart';
 
@@ -44,6 +46,32 @@ class ApiClient {
   static const _debugScansKey = 'debug_test_scans';
   static const _requestTimeout = Duration(seconds: 20);
   static const _maxAvatarBytes = 1024 * 1024;
+
+  static String? userAgentOverride;
+
+  static Future<void> initUserAgent() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      final appVersion = packageInfo.version;
+      final buildNumber = packageInfo.buildNumber;
+
+      final deviceInfo = DeviceInfoPlugin();
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        final androidInfo = await deviceInfo.androidInfo;
+        final manufacturer = androidInfo.manufacturer;
+        final model = androidInfo.model;
+        final release = androidInfo.version.release;
+        userAgentOverride = 'URLDefender/$appVersion+$buildNumber (Mobile; $manufacturer $model; Android $release)';
+      } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+        final iosInfo = await deviceInfo.iosInfo;
+        final name = iosInfo.name;
+        final systemVersion = iosInfo.systemVersion;
+        userAgentOverride = 'URLDefender/$appVersion+$buildNumber (Mobile; $name; iOS $systemVersion)';
+      }
+    } catch (_) {
+      userAgentOverride = 'URLDefender/Mobile';
+    }
+  }
 
   /// Converts managed avatar values from older deployments into the active
   /// backend origin. External/data/icon avatars are left unchanged.
@@ -115,14 +143,17 @@ class ApiClient {
             Uri.parse('${baseUrl.replaceFirst(RegExp(r'/$'), '')}/me/avatar'),
           )
           ..headers['Accept'] = 'application/json'
-          ..headers['Authorization'] = 'Bearer $sessionToken'
-          ..files.add(
-            http.MultipartFile.fromBytes(
-              'image',
-              imageBytes,
-              filename: image.name,
-            ),
-          );
+          ..headers['Authorization'] = 'Bearer $sessionToken';
+    if (userAgentOverride != null) {
+      request.headers['User-Agent'] = userAgentOverride!;
+    }
+    request.files.add(
+      http.MultipartFile.fromBytes(
+        'image',
+        imageBytes,
+        filename: image.name,
+      ),
+    );
     try {
       final streamed = await request.send().timeout(_requestTimeout);
       final response = await http.Response.fromStream(
@@ -164,6 +195,9 @@ class ApiClient {
     http.Client? client,
   }) async {
     final reqHeaders = <String, String>{'Accept': 'application/json'};
+    if (userAgentOverride != null) {
+      reqHeaders['User-Agent'] = userAgentOverride!;
+    }
     if (body != null) reqHeaders['Content-Type'] = 'application/json';
     if (headers != null) reqHeaders.addAll(headers);
     if (authenticated) {

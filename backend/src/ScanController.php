@@ -184,7 +184,7 @@ final class ScanController
         $verdict = $check->fetchColumn();
 
         if ($verdict === 'pending') {
-            $jobStmt = $this->db->prepare("SELECT id FROM scan_jobs WHERE scan_id = ? AND status = 'queued' LIMIT 1");
+            $jobStmt = $this->db->prepare("SELECT id FROM scan_jobs WHERE scan_id = ? AND status IN ('queued', 'processing') LIMIT 1");
             $jobStmt->execute([$scanId]);
             $jobId = $jobStmt->fetchColumn();
             if ($jobId) {

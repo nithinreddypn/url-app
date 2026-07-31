@@ -21,6 +21,7 @@ import '../models/blocked_url_model.dart';
 import '../models/user_model.dart';
 import '../providers/app_providers.dart';
 import '../theme/app_theme.dart';
+import 'widgets/section_end_indicator.dart';
 
 const int _maxAvatarBytes = 1024 * 1024;
 
@@ -110,26 +111,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with SingleTick
   // Security State
   bool _is2faEnabled = false;
   bool _blockedUrlsExpanded = false;
-  List<Map<String, String>> _activeSessions = [
-    {
-      'id': '1',
-      'device': 'Windows PC',
-      'browser': 'Chrome · Mumbai, IN',
-      'isCurrent': 'true',
-    },
-    {
-      'id': '2',
-      'device': 'iPhone 15 Pro',
-      'browser': 'Safari · Mumbai, IN',
-      'isCurrent': 'false',
-    },
-    {
-      'id': '3',
-      'device': 'MacBook Air',
-      'browser': 'Firefox · Bengaluru, IN',
-      'isCurrent': 'false',
-    }
-  ];
+  List<Map<String, String>> _activeSessions = [];
 
   Future<XFile?> _prepareAvatar(XFile selectedImage) async {
     final originalBytes = await selectedImage.readAsBytes();
@@ -1666,6 +1648,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with SingleTick
       child: Material(
         color: Colors.transparent,
         child: TabBar(
+          dividerColor: Colors.transparent,
           controller: _tabController,
           isScrollable: true,
           tabAlignment: TabAlignment.start,
@@ -1795,6 +1778,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with SingleTick
               );
             },
           ),
+          const SizedBox(height: 16),
+          const SectionEndIndicator(
+            icon: Icons.palette_outlined,
+            message: 'Appearance settings configured',
+          ),
         ],
       ),
     );
@@ -1844,6 +1832,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with SingleTick
                 const SnackBar(content: Text('Notification updated..')),
               );
             },
+          ),
+          const SizedBox(height: 16),
+          const SectionEndIndicator(
+            icon: Icons.notifications_active_outlined,
+            message: 'All notifications configured',
           ),
         ],
       ),
@@ -1922,68 +1915,131 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with SingleTick
             style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold, fontSize: 14),
           ),
           const SizedBox(height: 12),
-          GridView.count(
-            crossAxisCount: isTablet ? 2 : 1,
-            shrinkWrap: true,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
-            childAspectRatio: 2.8,
-            physics: const NeverScrollableScrollPhysics(),
-            children: [
-              _buildDataExportCard(
-                icon: Icons.download_rounded,
-                iconColor: Colors.blue,
-                title: 'Download Account Data',
-                description: 'Export all URLs scans and security logs.',
-                onTap: () {
-                  AlertService.showSuccess(context, 'Export Started', 'Data bundle is preparing.');
-                },
-              ),
-              _buildDataExportCard(
-                icon: Icons.delete_forever_outlined,
-                iconColor: _red,
-                title: 'Delete My Data',
-                description: 'Permanently purge historical records.',
-                onTap: () async {
-                  final confirm = await showDialog<bool>(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      backgroundColor: _cardColor,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      title: Text('Delete Data?', style: TextStyle(color: _textPrimary)),
-                      content: const Text('Are you sure you want to permanently clear all scan history? This action is irreversible.'),
-                      actions: [
-                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                        ElevatedButton(
-                          onPressed: () => Navigator.pop(ctx, true),
-                          style: ElevatedButton.styleFrom(backgroundColor: _red),
-                          child: const Text('Delete', style: TextStyle(color: Colors.white)),
-                        ),
-                      ],
+          isTablet
+              ? Row(
+                  children: [
+                    Expanded(
+                      child: _buildDataExportCard(
+                        icon: Icons.download_rounded,
+                        iconColor: Colors.blue,
+                        title: 'Download Account Data',
+                        description: 'Export all URLs scans and security logs.',
+                        onTap: () {
+                          AlertService.showSuccess(context, 'Export Started', 'Data bundle is preparing.');
+                        },
+                      ),
                     ),
-                  );
-                  if (confirm == true) {
-                    try {
-                      final currentUser = ref.read(userProvider);
-                      if (currentUser != null) {
-                        await _scanService.deleteScan('all', userId: currentUser.userId);
-                      }
-                      ref.invalidate(scanHistoryProvider);
-                      ref.invalidate(recentScansProvider);
-                      ref.invalidate(dangerousScansProvider);
-                      ref.invalidate(scanLimitProvider);
-                      if (context.mounted) {
-                        AlertService.showSuccess(context, 'Data Purged', 'Your records have been cleared.');
-                      }
-                    } catch (e) {
-                      if (context.mounted) {
-                        AlertService.showError(context, e);
-                      }
-                    }
-                  }
-                },
-              ),
-            ],
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _buildDataExportCard(
+                        icon: Icons.delete_forever_outlined,
+                        iconColor: _red,
+                        title: 'Delete My Data',
+                        description: 'Permanently purge historical records.',
+                        onTap: () async {
+                          final confirm = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              backgroundColor: _cardColor,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              title: Text('Delete Data?', style: TextStyle(color: _textPrimary)),
+                              content: const Text('Are you sure you want to permanently clear all scan history? This action is irreversible.'),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                                ElevatedButton(
+                                  onPressed: () => Navigator.pop(ctx, true),
+                                  style: ElevatedButton.styleFrom(backgroundColor: _red),
+                                  child: const Text('Delete', style: TextStyle(color: Colors.white)),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirm == true) {
+                            try {
+                              final currentUser = ref.read(userProvider);
+                              if (currentUser != null) {
+                                await _scanService.deleteScan('all', userId: currentUser.userId);
+                              }
+                              ref.invalidate(scanHistoryProvider);
+                              ref.invalidate(recentScansProvider);
+                              ref.invalidate(dangerousScansProvider);
+                              ref.invalidate(scanLimitProvider);
+                              if (context.mounted) {
+                                AlertService.showSuccess(context, 'Data Purged', 'Your records have been cleared.');
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                AlertService.showError(context, e);
+                              }
+                            }
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                )
+              : Column(
+                  children: [
+                    _buildDataExportCard(
+                      icon: Icons.download_rounded,
+                      iconColor: Colors.blue,
+                      title: 'Download Account Data',
+                      description: 'Export all URLs scans and security logs.',
+                      onTap: () {
+                        AlertService.showSuccess(context, 'Export Started', 'Data bundle is preparing.');
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    _buildDataExportCard(
+                      icon: Icons.delete_forever_outlined,
+                      iconColor: _red,
+                      title: 'Delete My Data',
+                      description: 'Permanently purge historical records.',
+                      onTap: () async {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            backgroundColor: _cardColor,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            title: Text('Delete Data?', style: TextStyle(color: _textPrimary)),
+                            content: const Text('Are you sure you want to permanently clear all scan history? This action is irreversible.'),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                              ElevatedButton(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                style: ElevatedButton.styleFrom(backgroundColor: _red),
+                                child: const Text('Delete', style: TextStyle(color: Colors.white)),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirm == true) {
+                          try {
+                            final currentUser = ref.read(userProvider);
+                            if (currentUser != null) {
+                              await _scanService.deleteScan('all', userId: currentUser.userId);
+                            }
+                            ref.invalidate(scanHistoryProvider);
+                            ref.invalidate(recentScansProvider);
+                            ref.invalidate(dangerousScansProvider);
+                            ref.invalidate(scanLimitProvider);
+                            if (context.mounted) {
+                              AlertService.showSuccess(context, 'Data Purged', 'Your records have been cleared.');
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              AlertService.showError(context, e);
+                            }
+                          }
+                        }
+                      },
+                    ),
+                  ],
+                ),
+          const SizedBox(height: 16),
+          const SectionEndIndicator(
+            icon: Icons.privacy_tip_outlined,
+            message: 'Your privacy is protected',
           ),
         ],
       ),
@@ -2050,7 +2106,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with SingleTick
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, color: _textSecondary.withValues(alpha: 0.5), size: 20),
+        Icon(icon, color: _textSecondary.withOpacity(0.5), size: 20),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
@@ -2093,60 +2149,139 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with SingleTick
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // Change password row
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.lock_clock_outlined, color: _blueColor, size: 24),
-            title: Text('Password Management', style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold)),
-            subtitle: Text('Changed recently · Secure 256-bit encryption.', style: TextStyle(color: _textMuted, fontSize: 12)),
-            trailing: ElevatedButton(
-              onPressed: _showChangePasswordDialog,
-              style: ElevatedButton.styleFrom(backgroundColor: _blueColor),
-              child: const Text('Change Password', style: TextStyle(color: Colors.white, fontSize: 12)),
-            ),
-          ),
-          const SizedBox(height: 16),
-          // 2FA row
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.security_rounded, color: _primaryGreen, size: 24),
-            title: Row(
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Two-Factor Auth (2FA)', style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold)),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _is2faEnabled 
-                        ? _primaryGreen.withOpacity(0.12)
-                        : _textSecondary.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(
-                      color: _is2faEnabled 
-                          ? _primaryGreen.withOpacity(0.3)
-                          : _textSecondary.withOpacity(0.15),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.lock_clock_outlined, color: _blueColor, size: 24),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Password Management',
+                            style: TextStyle(
+                              color: _textPrimary,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Changed recently · Secure 256-bit encryption.',
+                            style: TextStyle(color: _textMuted, fontSize: 12),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  child: Text(
-                    _is2faEnabled ? 'Enabled' : 'Disabled',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: _is2faEnabled ? _primaryGreen : _textSecondary,
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Padding(
+                  padding: const EdgeInsets.only(left: 36.0),
+                  child: ElevatedButton(
+                    onPressed: _showChangePasswordDialog,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _blueColor,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    ),
+                    child: const Text(
+                      'Change Password',
+                      style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ),
               ],
             ),
-            subtitle: Text('Secure using Google Authenticator, Authy, or 1Password.', style: TextStyle(color: _textMuted, fontSize: 12)),
-            trailing: OutlinedButton(
-              onPressed: () {
-                if (_is2faEnabled) {
-                  _showDisable2faDialog();
-                } else {
-                  _showSetup2faDialog(user);
-                }
-              },
-              child: Text(_is2faEnabled ? 'Disable 2FA' : 'Set up 2FA'),
+          ),
+          const SizedBox(height: 16),
+          // 2FA row
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.security_rounded, color: _primaryGreen, size: 24),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 8,
+                            children: [
+                              Text(
+                                'Two-Factor Auth (2FA)',
+                                style: TextStyle(
+                                  color: _textPrimary,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: _is2faEnabled 
+                                      ? _primaryGreen.withOpacity(0.12)
+                                      : _textSecondary.withOpacity(0.08),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: _is2faEnabled 
+                                        ? _primaryGreen.withOpacity(0.3)
+                                        : _textSecondary.withOpacity(0.15),
+                                  ),
+                                ),
+                                child: Text(
+                                  _is2faEnabled ? 'Enabled' : 'Disabled',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: _is2faEnabled ? _primaryGreen : _textSecondary,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Secure using Google Authenticator, Authy, or 1Password.',
+                            style: TextStyle(color: _textMuted, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Padding(
+                  padding: const EdgeInsets.only(left: 36.0),
+                  child: OutlinedButton(
+                    onPressed: () {
+                      if (_is2faEnabled) {
+                        _showDisable2faDialog();
+                      } else {
+                        _showSetup2faDialog(user);
+                      }
+                    },
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    ),
+                    child: Text(
+                      _is2faEnabled ? 'Disable 2FA' : 'Set up 2FA',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 16),
@@ -2269,6 +2404,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with SingleTick
             )
           else
             ListView.builder(
+              padding: EdgeInsets.zero,
               itemCount: _activeSessions.length,
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -2314,12 +2450,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with SingleTick
                 );
               },
             ),
-          const Divider(height: 32),
+          const SizedBox(height: 6),
+          const SectionEndIndicator(
+            icon: Icons.devices_other_rounded,
+            message: "That's all your active sessions",
+          ),
+          const Divider(height: 20),
           _buildPlaceholderLine(Icons.verified_user_rounded, 'Device Security', 'No additional security events available. Your account is currently protected.'),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           _buildPlaceholderLine(Icons.history_toggle_off_rounded, 'Login Activity', 'Your recent authentication events are secure.'),
           const SizedBox(height: 16),
           _buildPlaceholderLine(Icons.security_update_good_rounded, 'Account Protection', 'Real-time shields are active.'),
+          const SizedBox(height: 16),
+          const SectionEndIndicator(
+            icon: Icons.security_rounded,
+            message: 'All security settings verified',
+          ),
         ],
       ),
     );
@@ -2392,75 +2538,60 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with SingleTick
           ),
           const SizedBox(height: 16),
           // System stats grid
-          GridView.count(
-            crossAxisCount: isTablet ? 4 : 2,
-            shrinkWrap: true,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: 1.6,
-            physics: const NeverScrollableScrollPhysics(),
-            children: [
-              _buildSystemInfoCard('Release Version', '2.4.0'),
-              _buildSystemInfoCard('Build Target', 'Mobile'),
-              _buildSystemInfoCard('Engine Network', '74 Engines'),
-              _buildSystemInfoCard('Uptime Status', '99.9%'),
-            ],
-          ),
+          isTablet
+              ? Row(
+                  children: [
+                    Expanded(child: _buildSystemInfoCard('Release Version', '2.4.0')),
+                    const SizedBox(width: 12),
+                    Expanded(child: _buildSystemInfoCard('Build Target', 'Mobile')),
+                    const SizedBox(width: 12),
+                    Expanded(child: _buildSystemInfoCard('Engine Network', '74 Engines')),
+                    const SizedBox(width: 12),
+                    Expanded(child: _buildSystemInfoCard('Uptime Status', '99.9%')),
+                  ],
+                )
+              : Column(
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(child: _buildSystemInfoCard('Release Version', '2.4.0')),
+                        const SizedBox(width: 12),
+                        Expanded(child: _buildSystemInfoCard('Build Target', 'Mobile')),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(child: _buildSystemInfoCard('Engine Network', '74 Engines')),
+                        const SizedBox(width: 12),
+                        Expanded(child: _buildSystemInfoCard('Uptime Status', '99.9%')),
+                      ],
+                    ),
+                  ],
+                ),
           const SizedBox(height: 20),
           Text('Quick Resource Links', style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold, fontSize: 14)),
           const SizedBox(height: 12),
-          GridView.count(
-            crossAxisCount: isTablet ? 3 : 1,
-            shrinkWrap: true,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: 2.8,
-            physics: const NeverScrollableScrollPhysics(),
-            children: [
-              _buildQuickLinkCard(Icons.article_outlined, 'Terms of Service', 'Legal terms of service', _showTermsDialog),
-              _buildQuickLinkCard(Icons.privacy_tip_outlined, 'Privacy Policy', 'GDPR Compliant', _showPrivacyPolicyDialog),
-              _buildQuickLinkCard(Icons.support_agent_outlined, 'Support & Contact', '24/7 client response', _showSupportDialog),
-            ],
-          ),
+          isTablet
+              ? Row(
+                  children: [
+                    Expanded(child: _buildQuickLinkCard(Icons.article_outlined, 'Terms of Service', 'Legal terms of service', _showTermsDialog)),
+                    const SizedBox(width: 12),
+                    Expanded(child: _buildQuickLinkCard(Icons.privacy_tip_outlined, 'Privacy Policy', 'GDPR Compliant', _showPrivacyPolicyDialog)),
+                    const SizedBox(width: 12),
+                    Expanded(child: _buildQuickLinkCard(Icons.support_agent_outlined, 'Support & Contact', '24/7 client response', _showSupportDialog)),
+                  ],
+                )
+              : Column(
+                  children: [
+                    _buildQuickLinkCard(Icons.article_outlined, 'Terms of Service', 'Legal terms of service', _showTermsDialog),
+                    const SizedBox(height: 12),
+                    _buildQuickLinkCard(Icons.privacy_tip_outlined, 'Privacy Policy', 'GDPR Compliant', _showPrivacyPolicyDialog),
+                    const SizedBox(height: 12),
+                    _buildQuickLinkCard(Icons.support_agent_outlined, 'Support & Contact', '24/7 client response', _showSupportDialog),
+                  ],
+                ),
           const SizedBox(height: 24),
-          // Admin Queue Card
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Container(
-              constraints: const BoxConstraints(maxWidth: 450),
-              margin: const EdgeInsets.only(bottom: 16),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                border: Border.all(color: _primaryGreen.withOpacity(0.3)),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text('Admin Threat Center', style: TextStyle(color: _primaryGreen, fontWeight: FontWeight.bold, fontSize: 13)),
-                        const SizedBox(height: 2),
-                        Text('Moderate and review threats.', style: TextStyle(color: _textMuted, fontSize: 11)),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  ElevatedButton.icon(
-                    onPressed: () => context.push('/admin/reports'),
-                    icon: const Icon(Icons.security, color: Colors.black, size: 14),
-                    label: const Text('Review Queue', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.bold)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _primaryGreen,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
           // Danger Zone / Sign Out Card
           Align(
             alignment: Alignment.centerLeft,
@@ -2497,6 +2628,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with SingleTick
                 ],
               ),
             ),
+          ),
+          const SizedBox(height: 16),
+          const SectionEndIndicator(
+            icon: Icons.verified_outlined,
+            message: 'URL Defender is up to date',
           ),
         ],
       ),
@@ -2916,7 +3052,7 @@ class SessionTile extends StatelessWidget {
       child: Row(
         children: [
           Icon(
-            isCurrent ? Icons.computer_rounded : Icons.phone_android_rounded,
+            Icons.phone_android_rounded,
             color: isCurrent ? context.activeAccent : context.textSecondary,
             size: 28,
           ),

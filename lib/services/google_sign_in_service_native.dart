@@ -31,10 +31,6 @@ class GoogleSignInService {
 
   Future<String> signInOnNativePlatform() async {
     await initialize();
-    if (!_googleSignIn.supportsAuthenticate()) {
-      throw UnsupportedError('Google sign-in is not available on this device.');
-    }
-
     final account = await _googleSignIn.authenticate();
     final idToken = account.authentication.idToken;
     if (idToken == null || idToken.isEmpty) {

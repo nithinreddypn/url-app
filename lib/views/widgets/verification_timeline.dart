@@ -70,9 +70,9 @@ class VerificationTimeline extends StatelessWidget {
                   height: 32,
                   decoration: BoxDecoration(
                     color: status == 'completed'
-                        ? Colors.green.withValues(alpha: 0.1)
+                        ? Colors.green.withOpacity(0.1)
                         : (status == 'active'
-                            ? context.activeAccent.withValues(alpha: 0.1)
+                            ? context.activeAccent.withOpacity(0.1)
                             : Colors.transparent),
                     shape: BoxShape.circle,
                     border: Border.all(

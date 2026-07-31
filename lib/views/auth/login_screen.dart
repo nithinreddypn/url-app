@@ -246,7 +246,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final dividerColor = isDark
-        ? Colors.white.withValues(alpha: 0.06)
+        ? Colors.white.withOpacity(0.06)
         : const Color(0xFFE2E8F0);
     final textSec = isDark ? const Color(0xFFCBD5E1) : const Color(0xFF475569);
     final accentGreen = isDark
